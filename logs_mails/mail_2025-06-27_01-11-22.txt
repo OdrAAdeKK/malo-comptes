@@ -1,8 +1,0 @@
-Objet : [TEST] Dates MALO à déclarer pour Juillet 2025
-
-
-    <p>Salut Lionel,</p>
-    <p>Voici les cachets MALO à déclarer pour Juillet (test) :</p>
-    <p style='margin-left: 20px;'><strong>Lionel ARNOULD</strong><br>10/07/2025 – 140.00 €<br>11/07/2025 – 140.00 €<br>17/07/2025 – 140.00 €</p>
-    <p>Merci.<br>@+<br><br>Jérôme</p>
-    

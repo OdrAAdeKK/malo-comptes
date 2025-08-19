@@ -18,3 +18,12 @@ instance/
 .DS_Store
 .idea/
 .vscode/
+# Fichiers générés / temporaires
+exports/
+static/exports/
+static/pdf_temp/
+logs_mails/
+*.xlsx
+*.pdf
+*.dump
+log_*.txt
