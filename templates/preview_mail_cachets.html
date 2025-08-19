@@ -1,0 +1,46 @@
+<!-- preview_mail_cachets.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Prévisualisation du mail</title>
+    <style>
+        .preview-box {
+            max-width: 650px;
+            margin: 40px auto;
+            border: 1px solid #bbb;
+            border-radius: 10px;
+            padding: 30px;
+            background: #f9f9f9;
+        }
+        .preview-title {
+            text-align: center;
+            margin-bottom: 35px;
+            font-size: 1.2em;
+        }
+        .btns {
+            margin-top: 25px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-box">
+        <div class="preview-title">
+            <h3>{{ titre }}</h3>
+        </div>
+        <div style="background:#fff; padding:20px; border-radius:8px;">
+            {{ message_html|safe }}
+        </div>
+        <div class="btns">
+			<form action="{{ url_for('envoyer_mail_cachets') }}" method="post" style="display:inline;">
+				<input type="hidden" name="titre" value="{{ titre }}">
+				<textarea name="message_html" style="display:none;">{{ message_html|e }}</textarea>
+				<button type="submit" class="btn btn-success btn-lg" style="margin-right: 20px;">
+					Valider l'envoi du mail
+				</button>
+			</form>
+            <a href="{{ url_for('cachets_a_venir') }}" class="btn btn-danger btn-lg">Annuler</a>
+        </div>
+    </div>
+</body>
+</html>

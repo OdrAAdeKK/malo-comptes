@@ -1,0 +1,157 @@
+{% extends 'base.html' %}
+
+{% block title %}Ajouter un concert{% endblock %}
+
+{% block content %}
+<div class="form-container" style="margin: 48px auto 0 auto;">
+  <h1>Ajouter un concert</h1>
+  <form method="POST" autocomplete="off">
+  <!-- champs du formulaire inchangés -->
+  <label for="date">Date</label>
+  <input type="date" name="date" required>
+
+  <label for="lieu">Lieu</label>
+  <input type="text" name="lieu" required>
+
+  <label for="recette">Recette (€)</label>
+  <input type="number" step="0.01" name="recette">
+  
+	<label>Mode de paiement prévu&nbsp;:</label>
+	<div style="display: flex; gap: 22px; margin-bottom: 16px;">
+	  <label style="display: flex; align-items: center; gap: 8px;">
+		<input type="radio" name="mode_paiement_prevu" value="CB ASSO7" checked>
+		<span style="display:inline-block;background:#004c99;color:#fff;border-radius:13px;padding:7px 20px;font-weight:700;font-size:1.08em;">
+		  CB ASSO7<br><small style="font-weight:400;">virement</small>
+		</span>
+	  </label>
+	  <label style="display: flex; align-items: center; gap: 8px;">
+		<input type="radio" name="mode_paiement_prevu" value="CAISSE ASSO7">
+		<span style="display:inline-block;background:#54c173;color:#fff;border-radius:13px;padding:7px 20px;font-weight:700;font-size:1.08em;">
+		  CAISSE ASSO7<br><small style="font-weight:400;">espèces</small>
+		</span>
+	  </label>
+	</div>
+
+  <div class="paye-row">
+    <label for="paye" class="paye-label">Payé</label>
+    <input type="checkbox" class="paye-checkbox" name="paye" id="paye">
+  </div>
+
+<div class="button-row">
+  <button type="submit" class="valider-button">Valider</button>
+		<a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+</div>
+
+</form>
+
+</div>
+
+<dialog id="popupPaiement">
+  <form method="dialog" id="popupForm">
+    <h3>Choisissez le compte de paiement</h3>
+    <label>
+      <input type="radio" name="compte" value="CB ASSO7" checked>
+      CB ASSO7 (Virement)
+    </label><br>
+    <label>
+      <input type="radio" name="compte" value="CAISSE ASSO7">
+      CAISSE ASSO7 (Espèces)
+    </label>
+    <div style="margin-top:15px;">
+      <button id="validerPaiement" type="button">Valider</button>
+      <button type="button" onclick="fermerPopupPaiement()">Annuler</button>
+    </div>
+    <input type="hidden" id="concertIdPopup" value="">
+  </form>
+</dialog>
+
+<script>
+let compteChoisi = null;
+
+// Gère la soumission du formulaire
+document.querySelector('form').addEventListener('submit', function(e) {
+  const payeCheckbox = document.getElementById('paye');
+  if (payeCheckbox && payeCheckbox.checked && !compteChoisi) {
+    // On bloque le submit pour ouvrir le pop-up
+    e.preventDefault();
+    document.getElementById('popupPaiement').showModal();
+  }
+});
+
+// Valider le pop-up et soumettre le formulaire
+document.getElementById('validerPaiement').onclick = function() {
+  compteChoisi = document.querySelector('input[name="compte"]:checked').value;
+  // Crée (ou met à jour) un champ caché dans le formulaire principal
+  let form = document.querySelector('form');
+  let hidden = form.querySelector('input[name="compte_paiement"]');
+  if (!hidden) {
+    hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = 'compte_paiement';
+    form.appendChild(hidden);
+  }
+  hidden.value = compteChoisi;
+  fermerPopupPaiement();
+  form.submit();
+};
+
+function fermerPopupPaiement() {
+  document.getElementById('popupPaiement').close();
+}
+</script>
+
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 50px;
+    display: flex;
+    justify-content: center;
+  }
+  .form-container {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 400px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.5em;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  label {
+    display: block;
+    margin-bottom: 10px;
+    font-weight: bold;
+  }
+  input[type="text"],
+  input[type="date"],
+  input[type="number"] {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+  }
+  .paye-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 24px;
+    margin-top: 8px;
+    gap: 18px;
+  }
+  .paye-label {
+    font-weight: bold;
+    font-size: 1.1em;
+    margin-bottom: 0;
+    margin-right: 8px;
+  }
+  .paye-checkbox {
+    transform: scale(1.35);
+    margin-top: 0;
+  }
+</style>
+{% endblock %}

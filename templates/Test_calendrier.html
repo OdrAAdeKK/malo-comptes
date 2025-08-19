@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Test Concert Autocomplete</title>
+<style>
+#concert_autocomplete {position:absolute; background:white; border:1px solid #aaa; z-index:10;}
+.autocomplete-item {padding:6px 10px; cursor:pointer;}
+.autocomplete-item:hover {background:#eef;}
+</style>
+</head>
+<body>
+<div style="margin:80px">
+    <label for="concert_field">Concert lié :</label>
+    <input type="text" id="concert_field" autocomplete="off">
+    <input type="hidden" id="concert_id">
+    <div id="concert_autocomplete"></div>
+</div>
+<script>
+const concerts = [
+    {id: 1, dateFr: "01/09/2024", lieu: "Paris"},
+    {id: 2, dateFr: "15/10/2024", lieu: "Lyon"},
+    {id: 3, dateFr: "28/10/2024", lieu: "Marseille"},
+];
+let currentMatches = [], currentIndex = -1, selectByMouse = false;
+const concertField = document.getElementById("concert_field");
+const concertIdField = document.getElementById("concert_id");
+const concertAutocomplete = document.getElementById("concert_autocomplete");
+
+function fillConcert(c) {
+    concertField.value = `${c.dateFr} — ${c.lieu}`;
+    concertIdField.value = c.id;
+    concertField.dataset.locked = "true";
+    concertAutocomplete.style.display = "none";
+}
+concertField.addEventListener("input", function () {
+    if (concertField.dataset.locked === "true") return;
+    const value = concertField.value.trim().toLowerCase();
+    concertAutocomplete.innerHTML = ""; concertIdField.value = "";
+    concertField.dataset.locked = "";
+    if (!value) {concertAutocomplete.style.display="none"; return;}
+    const matches = concerts.filter(c => (`${c.dateFr} — ${c.lieu}`.toLowerCase()).includes(value));
+    currentMatches = matches; currentIndex = -1;
+    if (!matches.length) {concertAutocomplete.style.display="none";return;}
+    matches.forEach((c,i) => {
+        const item = document.createElement("div");
+        item.textContent = `${c.dateFr} — ${c.lieu}`; item.className="autocomplete-item";
+        item.addEventListener("mousedown", ()=>{selectByMouse=true; fillConcert(c);});
+        item.addEventListener("mouseenter", ()=>{currentIndex=i;updateHighlight();});
+        concertAutocomplete.appendChild(item);
+    });
+    concertAutocomplete.style.display="block";
+});
+function updateHighlight() {
+    const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+    items.forEach((item,i)=>item.style.background=(i===currentIndex)?"#eef":"white");
+}
+concertField.addEventListener("keydown", function (e) {
+    const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+    if (!items.length) return;
+    if (concertField.dataset.locked === "true" && !["Tab", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        e.preventDefault(); return;
+    }
+    if (e.key === "ArrowDown") {e.preventDefault(); currentIndex = (currentIndex + 1) % items.length; updateHighlight();}
+    else if (e.key === "ArrowUp") {e.preventDefault(); currentIndex = (currentIndex - 1 + items.length) % items.length; updateHighlight();}
+    else if (e.key === "Tab" || e.key === "Enter") {
+        if (currentIndex >= 0) {e.preventDefault(); fillConcert(currentMatches[currentIndex]);}
+    } else if (e.key === "Escape") {concertAutocomplete.style.display = "none";}
+});
+concertField.addEventListener("blur", function () {
+    setTimeout(() => {
+        if (concertField.dataset.locked === "true" || selectByMouse) {
+            concertAutocomplete.style.display = "none";
+            concertField.dataset.locked = "";
+            selectByMouse = false;
+        } else {
+            concertAutocomplete.style.display = "none";
+            concertField.value = "";
+            concertIdField.value = "";
+            concertField.dataset.locked = "";
+        }
+    }, 120);
+});
+concertField.addEventListener("focus", function () {
+    if (concertField.dataset.locked !== "true" && concertField.value.trim()) {
+        concertField.dispatchEvent(new Event("input"));
+    }
+});
+</script>
+</body>
+</html>

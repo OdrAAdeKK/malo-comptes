@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}Ajouter un musicien{% endblock %}
+
+{% block content %}
+
+
+<div class="container" style="max-width: 420px; margin: 0 auto; margin-top: 40px;">
+    <h1 style="text-align:center;">Ajouter un musicien</h1>
+
+    {% if erreur %}
+      <div style="color:#b71c1c; background:#fbe7e7; border-radius:5px; padding:10px 15px; margin-bottom:20px; text-align:center;">
+        {{ erreur }}
+      </div>
+    {% endif %}
+
+    <form method="POST" autocomplete="off">
+        <label for="prenom" style="font-weight: bold; margin-bottom: 7px; display: block;">Prénom</label>
+        <input type="text" id="prenom" name="prenom" value="{{ request.form.prenom or '' }}" required
+               style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;">
+
+        <label for="nom" style="font-weight: bold; margin-bottom: 7px; display: block;">Nom</label>
+        <input type="text" id="nom" name="nom" value="{{ request.form.nom or '' }}" required
+               style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;">
+
+        <label style="font-weight: normal; display:block; margin-bottom: 20px;">
+            <input type="checkbox" name="actif" {% if request.form.get('actif', True) %}checked{% endif %}>
+            Actif
+        </label>
+
+<div class="button-row">
+  <button type="submit" class="valider-button">Valider</button>
+  <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+</div>
+    </form>
+</div>
+{% endblock %}

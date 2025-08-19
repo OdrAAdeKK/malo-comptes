@@ -1,0 +1,14 @@
+<!doctype html>
+<title>Modifier une participation</title>
+<h1>Modifier la participation</h1>
+<form method="post">
+    Musicien :
+    <select name="musicien_id" required>
+        {% for m in musiciens %}
+        <option value="{{ m.id }}" {% if m.id == participation.musicien_id %}selected{% endif %}>{{ m.prenom }} {{ m.nom }}</option>
+        {% endfor %}
+    </select><br>
+    Payé : <input type="checkbox" name="paye" {% if participation.paye %}checked{% endif %}><br>
+    <button type="submit">Enregistrer</button>
+</form>
+<p><a href="{{ url_for('liste_participations', concert_id=participation.concert_id) }}">Retour à la liste</a></p>

@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+
+{% block title %}Cachets archivés – Saison {{ saison }}{% endblock %}
+
+{% block content %}
+<style>
+     .archived-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 30px;
+        font-size: 1rem;
+    }
+    .archived-table thead th {
+        background-color: #4fc3f7;
+        color: white;
+        font-weight: bold;
+    }
+    .archived-table th, .archived-table td {
+        padding: 10px 14px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+    }
+    .archived-table tbody tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    .archived-table tbody tr:hover {
+        background-color: #e6f8f5;
+    }
+</style>
+
+<div class="container">
+  <h1>Cachets — Saison {{ saison }}</h1>
+
+  {% if cachets_par_mois %}
+    {% for mois, cachets_par_musicien in cachets_par_mois %}
+      <h2 style="margin-top: 30px; padding: 10px; background-color: {{ couleurs_mois[mois.lower()] }};">
+		  {{ mois }}
+		</h2>
+
+
+      {% for musicien, cachets in cachets_par_musicien %}
+        <h3 style="margin-top: 20px;">🎵 {{ musicien.prenom }} {{ musicien.nom }}</h3>
+        <table class="archived-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Montant</th>
+              <th style="width: 1%; white-space: nowrap;">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in cachets %}
+              <tr>
+                <td>{{ c.date.strftime('%d/%m/%Y') }}</td>
+                <td>{{ "{:,.2f}".format(c.montant).replace(",", " ").replace(".", ",") }} €</td>
+				<td class="action-icons">
+				  <form action="{{ url_for('supprimer_cachet', id=c.id) }}" method="post" style="display:inline;">
+					<input type="hidden" name="next" value="{{ request.full_path }}">
+					<button type="submit" onclick="return confirm('Supprimer ce cachet ?')" style="background: none; border: none; padding: 0; cursor: pointer;">
+					  <i class="fas fa-trash-alt"></i>
+					</button>
+				  </form>
+				</td>
+
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+    {% endfor %}
+  {% else %}
+    <p>Aucun cachet pour cette saison.</p>
+  {% endif %}
+
+
+		<div class="button-row">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+    <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+    <a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
+	<a href="{{ url_for('declarer_cachet') }}" class="nouv-cachets-button">Nouveau cachet</a>  <!-- ⬅ Nouveau bouton -->
+	<a href="{{ url_for('cachets_a_venir') }}" class="a-venir-button">À venir</a>
+</div>
+</div>
+
+
+
+{% endblock %}

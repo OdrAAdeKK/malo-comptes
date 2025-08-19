@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Accueil{% endblock %}
+{% block content %}
+<div class="container">
+    <h1>Bienvenue Jérôme&nbsp;!</h1>
+    <div class="menu">
+        <a href="{{ url_for('liste_concerts') }}" class="btn btn-blue"><span>🎵</span>Concerts</a>
+        <a href="{{ url_for('comptes') }}" class="btn btn-green"><span>📊</span>Comptes</a>
+        <a href="{{ url_for('operations') }}" class="btn btn-teal"><span>💰</span>Opérations</a>
+        <a href="{{ url_for('declarer_cachet') }}" class="btn btn-bordeaux"><span>🎫</span>Cachets</a>
+        <a href="{{ url_for('page_archives') }}" class="btn btn-violet"><span>📁</span>Archives</a>
+		<a href="{{ url_for('export_general') }}" class="bouton-export">📥 Export Excel Général</a>
+
+
+
+    </div>
+</div>
+{% endblock %}

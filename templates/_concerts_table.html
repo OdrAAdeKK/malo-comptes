@@ -1,0 +1,78 @@
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Lieu</th>
+      <th>Recette</th>
+      <th>Frais</th>
+      <th>Payé</th>
+      <th>Participants</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for concert in concerts %}
+      <tr>
+        <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
+        <td>{{ concert.lieu }}</td>
+        <td>
+		  {% if not concert.paye and concert.recette_attendue is not none %}
+			<span style="font-style: italic; color: #888;">
+			  {{ format_currency(concert.recette_attendue) }}
+			</span>
+		  {% elif concert.recette is not none %}
+			{{ format_currency(concert.recette) }}
+		  {% else %}
+			—
+		  {% endif %}
+		</td>
+
+        <td>{{ format_currency(concert.frais) if concert.frais is not none else '' }}</td>
+		<td style="text-align:center;">
+		  {% if not readonly_checkboxes %}
+			<input type="checkbox"
+				   class="paye-checkbox"
+				   data-id="{{ concert.id }}"
+				   data-recette-attendue="{{ concert.recette_attendue or '' }}"
+				   {% if concert.paye %}checked{% endif %}>
+		  {% else %}
+			<input type="checkbox"
+				   class="paye-checkbox"
+				   data-id="{{ concert.id }}"
+				   data-recette-attendue="{{ concert.recette_attendue or '' }}"
+				   {% if concert.paye %}checked{% endif %}
+				   disabled>
+		  {% endif %}
+		</td>
+
+        <td>
+          {% if credits_musiciens.get(concert.id) %}
+            <div class="credits">
+              <strong>Participants&nbsp;:</strong>
+              <ul style="margin:6px 0 4px 16px; padding-left:0;">
+                {% for mid, credit in credits_musiciens[concert.id].items() %}
+                  {% set m = musiciens_dict[mid] %}
+                  <li>
+                    {{ m.prenom }} {{ m.nom }} : {{ format_currency(credit) }}
+                  </li>
+                {% endfor %}
+                {% if credits_asso7.get(concert.id) %}
+                  <li style="font-weight:600; color:#673ab7;">
+                    ASSO7&nbsp;: {{ format_currency(credits_asso7[concert.id]) }}
+                  </li>
+                {% endif %}
+              </ul>
+            </div>
+          {% endif %}
+          <div class="actions">
+            <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path, saison=saison) }}" class="edit-button" title="Modifier">✏️</a>
+            <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
+              <button type="submit" class="delete-button" title="Supprimer">🗑</button>
+            </form>
+            <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button" title="Participants">👥</a>
+          </div>
+        </td>
+      </tr>
+	  {% include "_popup_paiement.html" %}
+    {% endfor %}
+  </tbody>
+</table>

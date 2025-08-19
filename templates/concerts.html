@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+
+{% block title %}Concerts archivés - Saison {{ saison }}{% endblock %}
+{% block body_class %}big-mode{% endblock %}
+
+{% block content %}
+<div class="container" style="margin-top:24px;">
+  <h1>Les concerts à venir</h1>
+  {% if concerts %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Lieu</th>
+          <th>Recette</th>
+          <th>Frais</th>
+          <th>Payé</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for concert in concerts %}
+          <tr>
+            <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
+            <td>{{ concert.lieu }}</td>
+            <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
+            <td><span style="color:#888;font-style:italic;">{{ concert.recette_attendue | format_currency if concert.recette_attendue is not none else '' }}</span></td>
+			<td style="text-align:center;">
+			  <input type="checkbox"
+					 class="paye-checkbox"
+					 data-id="{{ concert.id }}"
+					 data-recette-attendue="{{ concert.recette_attendue or '' }}"
+					 {% if concert.paye %}checked{% endif %}>
+			</td>
+
+            <td>
+				{% if credits_musiciens.get(concert.id) %}
+				  <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
+					<strong>Participants&nbsp;:</strong>
+					<ul style="margin:6px 0 4px 16px; padding-left:0;">
+					  {% for mid, credit in credits_musiciens[concert.id].items() %}
+						{% set m = musiciens_dict[mid] %}
+						<li>
+						  {{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
+						</li>
+					  {% endfor %}
+					  <li style="font-weight:600; color:#673ab7;">
+						ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
+					  </li>
+					</ul>
+				  </div>
+				{% endif %}
+              <div class="actions">
+                <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path, saison=saison) }}" class="edit-button">✏️</a>
+                <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
+                  <button type="submit" class="delete-button">🗑</button>
+                </form>
+                <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>Aucun concert enregistré.</p>
+  {% endif %}
+  <div class="button-row-concerts">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+	<a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+    <a href="{{ url_for('archives_concerts') }}" class="archives-button">Archives</a>
+    <a href="{{ url_for('concerts_non_payes_view') }}" class="	nonpayes-button">Non payés</a>
+    <a href="{{ url_for('ajouter_concert') }}" class="add-button">+ Ajouter un concert</a>
+  </div>
+</div>
+
+{% include "_popup_paiement.html" %}
+
+
+
+<style>
+  .container {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 1200px;
+    width: 100%;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+  }
+  th {
+    background-color: #4285f4;
+    color: white;
+  }
+  tr:hover {
+    background-color: #f1f1f1;
+  }
+  .actions {
+    display: flex;
+    gap: 5px;
+  }
+  .edit-button, .delete-button, .participation-button {
+    padding: 6px 10px;
+    border-radius: 5px;
+    text-decoration: none;
+    font-size: 0.9em;
+    display: inline-block;
+    border: none;
+    cursor: pointer;
+  }
+  .edit-button {
+    background-color: #f9a825;
+    color: white;
+  }
+  .edit-button:hover {
+    background-color: #f57f17;
+  }
+  .delete-button {
+    background-color: #d32f2f;
+    color: white;
+  }
+  .delete-button:hover {
+    background-color: #b71c1c;
+  }
+  .participation-button {
+    background-color: #4285f4;
+    color: white;
+  }
+  .participation-button:hover {
+    background-color: #3367d6;
+  }
+ 
+  
+</style>
+
+<script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
+<script>
+document.querySelectorAll('.paye-checkbox').forEach(function(box) {
+  box.addEventListener('change', function() {
+    const concertId = this.dataset.id;
+    if (this.checked) {
+      showPopupPaiement(concertId, function(compte) {
+        if (!compte) {
+          // Annulé
+          box.checked = false;
+          return;
+        }
+        fetch("/valider_paiement_concert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ concert_id: concertId, compte: compte })
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            location.reload();
+          } else {
+            alert("Erreur : " + data.message);
+            box.checked = false;
+          }
+        });
+      });
+    } else {
+      // Décocher : annuler paiement
+      if(!confirm("Annuler la validation du paiement pour ce concert ?")) {
+        this.checked = true; // on remet la coche
+        return;
+      }
+      fetch("/annuler_paiement_concert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concert_id: concertId })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) location.reload();
+        else {
+          alert("Erreur : " + data.message);
+          this.checked = true;
+        }
+      });
+    }
+  });
+});
+</script>
+
+{% endblock %}

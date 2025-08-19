@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Participations{% endblock %}
+
+{% block content %}
+<div class="container">
+  <h1>Participations – {{ concert.lieu }} ({{ concert.date.strftime('%d/%m/%Y') }})</h1>
+  <form method="POST">
+    <input type="hidden" name="retour" value="{{ retour if retour is defined else '' }}">
+    <input type="hidden" name="saison" value="{{ saison if saison is defined else '' }}">
+    <table>
+      <thead>
+        <tr>
+          <th>Musicien</th>
+          <th>Présent</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for musicien in musiciens %}
+          {% set is_jerome = (musicien.prenom|lower == 'jérôme' and musicien.nom|lower == 'arnould') %}
+          <tr>
+            <td>
+              {{ musicien.prenom }} {{ musicien.nom }}
+              {% if is_jerome %}
+                <span style="color:#999; font-size:0.93em;">(obligatoire)</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if is_jerome %}
+                <input type="checkbox" name="participants" value="{{ musicien.id }}" checked disabled style="accent-color:#34a853;">
+                <input type="hidden" name="participants" value="{{ musicien.id }}">
+              {% else %}
+                <input type="checkbox" name="participants" value="{{ musicien.id }}"
+                  {% if musicien.id in participants_ids %}checked{% endif %} style="accent-color:#4285f4;">
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+	<div class="button-row">
+	  <button type="submit" class="valider-button">Valider</button>
+	  <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+	</div>
+    <input type="hidden" name="action" id="action-input" value="save">
+  </form>
+</div>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 50px;
+    display: flex;
+    justify-content: center;
+  }
+  .container {
+    background: white;
+    padding: 30px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 800px;
+    width: 100%;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 25px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th, td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #ccc;
+  }
+  th {
+    background-color: #4285f4;
+    color: white;
+  }
+  tr:hover {
+    background-color: #f1f1f1;
+  }
+  input[type="checkbox"] {
+    transform: scale(1.2);
+    margin-right: 4px;
+  }
+</style>
+
+<script>
+function annulerParticipation() {
+    // On retourne simplement vers la bonne page selon le contexte
+    {% if retour == "ajout" %}
+        {% if concert.date > current_date %}
+            window.location.href = "{{ url_for('liste_concerts') }}";
+        {% elif not concert.paye %}
+            window.location.href = "{{ url_for('concerts_non_payes') }}";
+        {% else %}
+            window.location.href = "{{ url_for('archives_concerts_saison', saison=get_saison_from_date(concert.date.strftime('%d/%m/%Y'))) }}";
+        {% endif %}
+    {% elif retour == "archives" and saison %}
+        window.location.href = "{{ url_for('archives_concerts_saison', saison=saison) }}";
+    {% elif retour == "nonpayes" %}
+        window.location.href = "{{ url_for('concerts_non_payes') }}";
+    {% else %}
+        window.location.href = "{{ url_for('liste_concerts') }}";
+    {% endif %}
+}
+</script>
+{% endblock %}

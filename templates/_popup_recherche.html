@@ -1,0 +1,14 @@
+<div id="popup-recherche" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+     background:#fff; border:1px solid #ccc; border-radius:10px; padding:20px; box-shadow:0 0 15px #0004; z-index:1000; width:300px;">
+    <h3>🔍 Rechercher une opération</h3>
+    <form id="form-recherche" onsubmit="return filtrerOperationsParMontant()">
+        <label for="montant">Montant (€) :</label>
+        <input type="number" id="montant" name="montant" step="0.01" style="width:100%; margin-bottom:12px;" />
+
+        <div style="display:flex; justify-content:space-between; margin-top:10px;">
+            <button type="submit">Rechercher</button>
+            <button type="button" onclick="fermerPopupRecherche()">Annuler</button>
+
+        </div>
+    </form>
+</div>

@@ -1,0 +1,425 @@
+body {
+    font-family: 'Inter', Arial, sans-serif;
+    background-color: #f7f7f9;
+    margin: 0;
+}
+
+/* ---------- Conteneur principal (toutes pages) ---------- */
+.container {
+    background: #fff;
+    padding: 40px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 900px;
+    width: 100%;
+    margin: 60px auto 0 auto;
+    text-align: center;
+}
+
+/* ---------- Titres ---------- */
+h1 {
+    font-family: 'Inter', Arial, sans-serif;
+    font-size: 2.6em;
+    font-weight: 700;
+    margin-bottom: 36px;
+    color: #23243b;
+    letter-spacing: -1px;
+    text-align: center;
+}
+
+/* ---------- Accueil : menu boutons ---------- */
+.menu {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    align-items: center;
+}
+
+/* GROS BOUTONS (Accueil) */
+.btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 300px;
+    padding: 18px 28px;
+    border-radius: 16px;
+    font-size: 1.6em;
+    font-family: inherit;
+    font-weight: 400;
+    text-align: left;
+    text-decoration: none;
+    color: #fff !important;
+    box-shadow: 0 3px 12px 0 rgba(30,35,90,0.07);
+    outline: none;
+    border: none;
+    margin: 0;
+    transition: background 0.16s, transform 0.13s, box-shadow 0.13s;
+}
+.btn span {
+    margin-left: 18px;
+}
+.btn-blue     { background: #4285f4; }
+.btn-green    { background: #34a853; }
+.btn-teal     { background: #26bfa6; }
+.btn-bordeaux { background: #a13e58; }
+.btn-violet   { background: #7e57c2; }
+.btn-yellow   { background: #FFD600; color: #333 !important; }
+.btn-orange   { background: #fd7e14; }
+.btn:hover, .btn:focus {
+    transform: scale(1.04);
+    box-shadow: 0 8px 24px 0 rgba(50, 65, 120, 0.13);
+    filter: brightness(1.04);
+    text-decoration: none;
+}
+
+/* ---------- TABLE CONCERTS ---------- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 30px;
+}
+th, td {
+    text-align: left;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+th {
+    background-color: #4285f4;
+    color: white;
+    font-size: 1rem;
+}
+tr:hover:not(.no-hover) {
+    background-color: #f1f1f1;
+}
+
+/* PARTICIPANTS & ASSO7 */
+.credits {
+    font-size: 0.97em;
+    margin-bottom: 8px;
+    text-align: left;
+}
+.credits ul {
+    margin: 6px 0 4px 16px;
+    padding-left: 0;
+}
+.credits li {
+    margin-bottom: 2px;
+}
+.credits li:last-child {
+    font-weight: 600;
+    color: #673ab7; /* Violet */
+}
+
+/* ---------- ACTIONS (Edit/Suppr/Participants) ---------- */
+.actions {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+    justify-content: flex-start;
+}
+.edit-button, .delete-button, .participation-button {
+    padding: 6px 10px;
+    border-radius: 5px;
+    text-decoration: none;
+    font-size: 0.9em;
+    display: inline-block;
+    border: none;
+    cursor: pointer;
+    margin-right: 2px;
+}
+.edit-button {
+    background-color: #f9a825;
+    color: white;
+}
+.edit-button:hover {
+    background-color: #f57f17;
+}
+.delete-button {
+    background-color: #d32f2f;
+    color: white;
+}
+.delete-button:hover {
+    background-color: #b71c1c;
+}
+.participation-button {
+    background-color: #4285f4;
+    color: white;
+}
+.participation-button:hover {
+    background-color: #3367d6;
+}
+
+/* ---------- Boutons de navigation harmonisés (corrigé 2) ---------- */
+.button-row,
+.button-row-concerts {
+    display: flex;
+    flex-wrap: nowrap; /* ➜ ne passe pas à la ligne si possible */
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    margin: 30px 0 8px 0;
+    flex-wrap: nowrap;
+}
+
+.button-row a,
+.button-row-concerts a {
+    flex: 1 1 0; /* ➜ permet de se "serrer" si l’espace manque */
+    min-height: 58px;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-size: 1.2em;
+    font-family: 'Inter', Arial, sans-serif;
+    font-weight: 600;
+    text-align: center;
+    line-height: 58px; /* ➜ centré verticalement */
+    text-decoration: none;
+    color: #fff !important;
+    border: none;
+    cursor: pointer;
+    transition: background 0.18s ease, transform 0.12s ease;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    white-space: nowrap;
+}
+
+/* 🟦 Accueil - Bleu France */
+.back-button,
+.back-button-concerts {
+    background-color: #003e7e;
+}
+.back-button:hover,
+.back-button-concerts:hover {
+    background-color: #002e5e;
+    transform: scale(1.03);
+}
+
+/* 🟧 Retour - Orange doux */
+.retour-button {
+    background-color: #fb8c00;
+}
+.retour-button:hover {
+    background-color: #ef6c00;
+    transform: scale(1.03);
+}
+
+/* 🟪 Archives */
+.archives-button,
+.archive-button-concerts {
+    background-color: #7e57c2;
+}
+.archives-button:hover,
+.archive-button-concerts:hover {
+    background-color: #5e3fa4;
+    transform: scale(1.03);
+}
+
+/* 🟩 Valider */
+.valider-button {
+    background-color: #43a047;
+}
+.valider-button:hover {
+    background-color: #2e7d32;
+    transform: scale(1.03);
+}
+
+/* 🔵 À venir — Bleu ciel légèrement foncé */
+.a-venir-button {
+    background-color: #81d4fa;
+    color: #004c66 !important;
+}
+.a-venir-button:hover {
+    background-color: #4fc3f7;
+    color: #003344 !important;
+    transform: scale(1.03);
+}
+
+/* 🔴 Concerts non payés */
+.nonpayes-button,
+.non-payes-button-concerts {
+    background-color: #e53935;
+}
+.nonpayes-button:hover,
+.non-payes-button-concerts:hover {
+    background-color: #b71c1c;
+    transform: scale(1.03);
+}
+
+/* 🟨 Ajouter concert */
+.add-button,
+.add-button-concerts {
+    background-color: #fbc02d;
+    color: #333 !important;
+}
+.add-button:hover,
+.add-button-concerts:hover {
+    background-color: #fdd835;
+    color: #111 !important;
+    transform: scale(1.03);
+}
+
+/* 🟦 Turquoise — Opérations */
+.operations-button {
+    background-color: #26bfa6;
+}
+.operations-button:hover {
+    background-color: #1ca891;
+    transform: scale(1.03);
+}
+
+/* 🟥 Cachets - Bordeaux */
+.cachets-button {
+    background-color: #a13e58;
+}
+.cachets-button:hover {
+    background-color: #802f45;
+    transform: scale(1.03);
+}
+
+.nouv-cachets-button {
+    background-color: #ba656f;
+}
+.nouv-cachets-button:hover {
+    background-color: #9a575f;
+    transform: scale(1.03);
+}
+   .reports-button {
+    background-color: #C57106;
+  }
+  .reports-button:hover {
+    background-color: #D06F00;
+    transform: scale(1.03);	
+  }
+  .musiciens-button {
+    background-color: #D5C51A;
+  }
+  .musiciens-button:hover {
+    background-color: #C6A915;
+    transform: scale(1.03);	
+  }
+
+
+  @media (max-width: 850px) {
+    .button-row-concerts { flex-direction: column; gap: 14px; }
+    .back-button-concerts-button, .archive-button-concerts-button, .non-payes-button-concerts-button, .add-button-concerts { width: 100%; min-width: 0; }
+  }
+  
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  justify-content: center;
+  margin-top: 32px;
+}
+
+.valider-button,
+.retour-button {
+  flex: 1 1 0; 
+  max-width: 200px;
+  min-height: 60px;
+  padding: 18px;
+  font-size: 1.2em;
+  font-weight: 700;
+  font-family: 'Inter', Arial, sans-serif;
+  border-radius: 10px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.07);
+  transition: background 0.2s, transform 0.15s;
+}
+
+.valider-button {
+  background-color: #34a853;
+  color: white;
+  border: none;
+}
+
+.valider-button:hover {
+  background-color: #2c8a47;
+  transform: scale(1.03);
+}
+
+.retour-button {
+  background-color: #f57c00;
+  color: white;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.retour-button:hover {
+  background-color: #e06d00;
+  transform: scale(1.03);
+}
+
+	.btn-mail-lionel {
+	  background-color: #4fc3f7; /* bleu clair */
+	  color: white;
+	  font-weight: bold;
+	  border: none;
+	}
+
+	.btn-mail-lionel:hover {
+	  background-color: #35b2e6;
+	    transform: scale(1.03);
+	}
+	
+	.bouton-export {
+    background-color: #6C5CE7; /* violet doux */
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    display: inline-block;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.bouton-export:hover {
+    background-color: #a29bfe;
+    color: black;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+}
+
+  
+/* ----------- Responsive ----------- */
+@media (max-width: 600px) {
+    .container { padding: 18px 4px; }
+    h1 { font-size: 1.3em; }
+    table, th, td { font-size: 0.93em; }
+    .btn { font-size: 1em; padding: 10px 12px; }
+    .button-row a { font-size: 1em; min-width: 160px; min-height: 38px; }
+}
+.autocomplete-list {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px #0001;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.autocomplete-item:hover {
+    background: #f3e8fd;
+    color: #842eb2;
+}
+#concert_autocomplete div.selected {
+    background-color: #007BFF;
+    color: white;
+}
+.form-actions-row a:hover,
+.form-actions-row button:hover {
+    filter: brightness(1.1);
+    cursor: pointer;
+}
+#date {
+    font-size: 1.2em;
+    padding: 12px 10px;
+}
+.btn-precedent {
+    background-color: #E4560C;
+}
+.btn-precedent:hover {
+    background-color: #c34708;
+}

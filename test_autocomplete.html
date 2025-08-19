@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Test autocomplete pur</title>
+  <style>
+    .autocomplete-list { border: 1px solid #bbb; max-height: 120px; overflow-y: auto; background: #fff; }
+    .autocomplete-item { padding: 6px 10px; cursor: pointer; }
+    .autocomplete-item.active { background: #eef; }
+  </style>
+</head>
+<body>
+  <label for="concert_field">Concert lié :</label>
+  <input type="text" id="concert_field" autocomplete="off" style="width:350px;">
+  <input type="hidden" id="concert_id">
+  <div id="concert_autocomplete" class="autocomplete-list" style="display:none;"></div>
+  <script>
+    const concerts = [
+      { id: 1, dateFr: "12/07/2024", lieu: "Paris" },
+      { id: 2, dateFr: "14/07/2024", lieu: "Lyon" },
+      { id: 3, dateFr: "19/08/2024", lieu: "Marseille" }
+    ];
+    let currentMatches = [], currentIndex = -1;
+    const concertField = document.getElementById("concert_field");
+    const concertIdField = document.getElementById("concert_id");
+    const concertAutocomplete = document.getElementById("concert_autocomplete");
+
+    function fillConcert(c) {
+      concertField.value = `${c.dateFr} — ${c.lieu}`;
+      concertIdField.value = c.id;
+      concertField.dataset.locked = "true";
+      concertAutocomplete.style.display = "none";
+    }
+
+    concertField.addEventListener("input", function () {
+      if (concertField.dataset.locked === "true") return;
+      const value = concertField.value.trim().toLowerCase();
+      concertAutocomplete.innerHTML = "";
+      concertIdField.value = "";
+      concertField.dataset.locked = "";
+      if (value.length < 1) { concertAutocomplete.style.display = "none"; return; }
+      currentMatches = concerts.filter(c => {
+        const label = `${c.dateFr} — ${c.lieu}`.toLowerCase();
+        return label.startsWith(value) || label.split(/[\s—]+/).some(word => word.startsWith(value));
+      });
+      currentIndex = -1;
+      if (currentMatches.length === 0) { concertAutocomplete.style.display = "none"; return; }
+      currentMatches.forEach((c, i) => {
+        const item = document.createElement("div");
+        item.textContent = `${c.dateFr} — ${c.lieu}`;
+        item.className = "autocomplete-item";
+        item.addEventListener("mousedown", function () { fillConcert(c); });
+        item.addEventListener("mouseenter", function () {
+          currentIndex = i; updateHighlight();
+        });
+        concertAutocomplete.appendChild(item);
+      });
+      concertAutocomplete.style.display = "block";
+    });
+
+    function updateHighlight() {
+      const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+      items.forEach((item, i) => { item.classList.toggle("active", i === currentIndex); });
+    }
+
+    concertField.addEventListener("keydown", function (e) {
+      const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+      if (items.length === 0) return;
+      if (concertField.dataset.locked === "true" && !["Tab", "ArrowUp", "ArrowDown"].includes(e.key)) {
+        e.preventDefault(); return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault(); currentIndex = (currentIndex + 1) % items.length; updateHighlight();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault(); currentIndex = (currentIndex - 1 + items.length) % items.length; updateHighlight();
+      } else if (e.key === "Tab" || e.key === "Enter") {
+        if (currentIndex >= 0) {
+          e.preventDefault(); fillConcert(currentMatches[currentIndex]);
+        }
+      } else if (e.key === "Escape") {
+        concertAutocomplete.style.display = "none";
+      }
+    });
+
+    concertField.addEventListener("blur", function () {
+      setTimeout(() => {
+        if (concertIdField.value) {
+          concertAutocomplete.style.display = "none";
+          return;
+        }
+        concertAutocomplete.style.display = "none";
+        concertField.value = "";
+        concertIdField.value = "";
+      }, 100);
+    });
+
+    concertField.addEventListener("focus", function () {
+      if (concertField.dataset.locked !== "true" && concertField.value.trim()) {
+        concertField.dispatchEvent(new Event("input"));
+      }
+    });
+  </script>
+</body>
+</html>

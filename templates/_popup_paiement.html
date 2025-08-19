@@ -1,0 +1,26 @@
+<dialog id="popupPaiement">
+  <form method="dialog" id="popupForm">
+    <h3>Choisissez le compte de paiement</h3>
+
+    <label>
+      <input type="radio" name="compte" value="CB ASSO7" checked>
+      CB ASSO7 (Virement)
+    </label><br>
+    <label>
+      <input type="radio" name="compte" value="CAISSE ASSO7">
+      CAISSE ASSO7 (Espèces)
+    </label>
+
+    <div style="margin-top:15px;">
+      <label for="recettePopup">Recette réelle (€) :</label><br>
+      <input type="number" step="0.01" id="recettePopup" name="recette" required>
+    </div>
+
+    <div style="margin-top:15px;">
+      <button id="validerPaiement" type="button">Valider</button>
+      <button type="button" onclick="fermerPopupPaiement()">Annuler</button>
+    </div>
+
+    <input type="hidden" id="concertIdPopup" value="">
+  </form>
+</dialog>

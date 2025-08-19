@@ -1,0 +1,75 @@
+.icon-button {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 6px;
+}
+.icon-button.orange { color: #E67E22; }
+.icon-button.red { color: #C0392B; }
+
+.archived-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 30px;
+    font-size: 1rem;
+}
+.archived-table thead th {
+    background-color: #26bfa6 !important;
+    color: white;
+    font-weight: bold;
+}
+.archived-table th,
+.archived-table td {
+    padding: 10px 14px;
+    border: 1px solid #e0e0e0;
+    text-align: left;
+}
+.archived-table tbody tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+.archived-table tbody tr:hover {
+    background-color: #e6f8f5;
+}
+
+/* ✅ Style lignes Commission Lionel */
+tr.operation-auto {
+    background-color: #f3f3f3;
+    color: #666;
+    font-style: italic;
+}
+tr.operation-auto td {
+    border-top: 1px solid #ddd;
+}
+tr.operation-auto span[title] {
+    cursor: default;
+}
+
+/* ✅ Style popup recherche */
+#popup-recherche {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 0 15px #0004;
+    z-index: 1000;
+    width: 300px;
+}
+#popup-recherche input {
+    width: 100%;
+    margin-bottom: 12px;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+}
+#popup-recherche button {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+}

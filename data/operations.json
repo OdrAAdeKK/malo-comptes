@@ -1,0 +1,222 @@
+[
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Salaire",
+        "precision": "",
+        "montant": 86.5,
+        "date": "2025-06-19",
+        "brut": 100.0,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Commission Lionel",
+        "precision": "3% brut salaire",
+        "montant": 3.0,
+        "date": "2025-06-19",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Lionel Arnould",
+        "type": "credit",
+        "motif": "Commission Lionel",
+        "precision": "3% brut de Jérôme ARNOULD",
+        "montant": 3.0,
+        "date": "2025-06-19",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "",
+        "montant": 50.0,
+        "date": "2025-06-06",
+        "brut": null,
+        "concert_id": 6
+    },
+    {
+        "musicien": "Caroline LACROIX",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "Tsèt",
+        "montant": 36.5,
+        "date": "2025-06-20",
+        "brut": null,
+        "concert_id": 5
+    },
+    {
+        "musicien": "Gaël ARNOULD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "",
+        "montant": 100.0,
+        "date": "2025-07-05",
+        "brut": null,
+        "concert_id": 3
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Salaire",
+        "precision": "test 2",
+        "montant": 1200.0,
+        "date": "2025-06-14",
+        "brut": 1400.0,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Commission Lionel",
+        "precision": "3% brut salaire",
+        "montant": 42.0,
+        "date": "2025-06-14",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Lionel Arnould",
+        "type": "credit",
+        "motif": "Commission Lionel",
+        "precision": "3% brut de Jérôme ARNOULD",
+        "montant": 42.0,
+        "date": "2025-06-14",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Salaire",
+        "precision": "tsèt 3",
+        "montant": 600.0,
+        "date": "2025-06-28",
+        "brut": 800.0,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Commission Lionel",
+        "precision": "3% brut salaire",
+        "montant": 24.0,
+        "date": "2025-06-28",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Lionel Arnould",
+        "type": "credit",
+        "motif": "Commission Lionel",
+        "precision": "3% brut de Jérôme ARNOULD",
+        "montant": 24.0,
+        "date": "2025-06-28",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Lionel ARNOULD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "Tsèt 4",
+        "montant": 150.0,
+        "date": "2025-07-25",
+        "brut": null,
+        "concert_id": 4
+    },
+    {
+        "musicien": "Nathan BRAUD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "train",
+        "montant": 75.0,
+        "date": "2025-06-06",
+        "brut": null,
+        "concert_id": 6
+    },
+    {
+        "musicien": "Caroline LACROIX",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "Essence",
+        "montant": 77.0,
+        "date": "2025-06-06",
+        "brut": null,
+        "concert_id": 6
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "",
+        "montant": 54.0,
+        "date": "2025-06-20",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "tsèt 5",
+        "montant": 78.0,
+        "date": "2024-08-09",
+        "brut": null,
+        "concert_id": 7
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "debit",
+        "motif": "Salaire",
+        "precision": "Mars 2025",
+        "montant": 1120.0,
+        "date": "2025-04-03",
+        "brut": null,
+        "concert_id": null
+    },
+    {
+        "musicien": "Jérôme ARNOULD",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "Tsèt 8",
+        "montant": 542.0,
+        "date": "2025-06-26",
+        "brut": null,
+        "concert_id": 2
+    },
+    {
+        "musicien": "Lionel ARNOULD",
+        "type": "debit",
+        "motif": "Salaire",
+        "precision": "",
+        "montant": 150.0,
+        "date": "2025-06-02",
+        "brut": 100.0,
+        "concert_id": null
+    },
+    {
+        "musicien": "Michel SCHICK",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "",
+        "montant": 123.0,
+        "date": "2025-06-26",
+        "brut": null,
+        "concert_id": 2
+    },
+    {
+        "musicien": "Michel SCHICK",
+        "type": "credit",
+        "motif": "Frais",
+        "precision": "",
+        "montant": 123.0,
+        "date": "2025-06-26",
+        "brut": null,
+        "concert_id": 2
+    }
+]

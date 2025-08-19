@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Reports</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f9f9f9; padding: 60px; }
+        .container { background: #fff; padding: 30px; max-width: 470px; margin: auto; border-radius: 10px; box-shadow: 0 0 10px #0002;}
+        h1 { text-align: center; color: #1565c0; margin-bottom: 32px; }
+        label { font-weight: bold; display: block; margin-bottom: 8px;}
+        select, input[type="number"] {
+            padding: 10px; border-radius: 6px; border: 1px solid #ccc; width: 100%; margin-bottom: 18px; font-size: 1.03em;
+        }
+        .form-row { display: flex; gap: 18px; align-items: end; }
+        .form-row > div { flex: 1; }
+        .btn-row { display: flex; gap: 16px; justify-content: center; margin-top: 22px;}
+        button, .btn-retour {
+            border: none; border-radius: 6px; font-size: 1.08em; padding: 12px 18px; font-weight: 500; cursor: pointer;
+        }
+        .val-actuelle {
+            color: #888; font-size: 0.98em; text-align: center;
+            margin-bottom: 10px;
+        }
+        .message {
+            background: #e3f7e1;
+            border: 1px solid #badcbc;
+            color: #256029;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 22px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Reports</h1>
+    {% if message %}
+        <div class="message">{{ message }}</div>
+    {% endif %}
+    <form method="post" autocomplete="off">
+        <div class="form-row">
+            <div>
+                <label for="musicien">Qui&nbsp;?</label>
+                <select name="musicien" id="musicien" required onchange="updateValActuelle()">
+                    <option value="">-- Sélectionner --</option>
+                    {% for m in musiciens %}
+                        <option value="{{ m.id }}">{{ m.prenom ~ " " if m.prenom }}{{ m.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="montant">Montant (€)</label>
+                <input type="number" step="0.01" name="montant" id="montant" required placeholder="0.00">
+            </div>
+        </div>
+        <div class="val-actuelle" id="val-actuelle"></div>
+        <div class="button-row">
+            <button type="submit" class="valider-button">Valider</button>
+            <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+        </div>
+    </form>
+</div>
+<script>
+    // Pour afficher la valeur actuelle du report selon le musicien sélectionné
+    const reports = {{ reports|tojson }};
+    const selectMusicien = document.getElementById("musicien");
+    const valActuelle = document.getElementById("val-actuelle");
+
+    function updateValActuelle() {
+        const key = selectMusicien.value;
+        if (reports.hasOwnProperty(key)) {
+            valActuelle.innerHTML = "Report actuel : <b>" + (reports[key] >= 0 ? "+" : "") + reports[key].toFixed(2) + " €</b>";
+            document.getElementById("montant").value = reports[key];
+        } else {
+            valActuelle.innerHTML = "Aucun report existant pour ce musicien.";
+            document.getElementById("montant").value = "";
+        }
+    }
+
+    selectMusicien.addEventListener("change", updateValActuelle);
+</script>
+</body>
+</html>

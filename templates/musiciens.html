@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+    		  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <title>Liste des musiciens</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 50px;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-width: 700px;
+      width: 100%;
+    }
+    h1 {
+      font-size: 1.8em;
+      text-align: center;
+      margin-bottom: 25px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #4285f4;
+      color: white;
+    }
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+    .edit-button, .delete-button {
+      padding: 6px 10px;
+      border-radius: 5px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9em;
+    }
+    .edit-button {
+      background-color: #f9a825;
+      color: white;
+      margin-right: 5px;
+    }
+    .edit-button:hover {
+      background-color: #f57f17;
+    }
+    .delete-button {
+      background-color: #d32f2f;
+      color: white;
+    }
+    .delete-button:hover {
+      background-color: #b71c1c;
+    }
+    .action-buttons {
+      display: flex;
+      gap: 5px;
+    }
+
+    /* Style pour lignes structure */
+    .structure-row td {
+      font-weight: bold;
+      background: #f6f7fa;
+      color: #222;
+      border-bottom: 1px solid #e2e2e2;
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
+    .structure-row td:not(:first-child) {
+      background: #f6f7fa;
+      color: #222;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Musiciens</h1>
+<form method="get" id="filter-form">
+<table>
+  <thead>
+    <tr>
+      <th>Prénom</th>
+      <th>Nom</th>
+      <th>
+        Actif
+        <!-- Trick pour la checkbox : on envoie "off" si décochée -->
+        <input type="hidden" name="actifs_uniquement" value="off">
+        <input type="checkbox" name="actifs_uniquement" value="on"
+               onchange="this.form.submit()"
+               {% if actifs_uniquement %}checked{% endif %}
+               style="margin-left:8px;vertical-align:middle;">
+      </th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in musiciens %}
+      <tr>
+        <td>{{ m.prenom }}</td>
+        <td>{{ m.nom }}</td>
+        <td>{{ 'Oui' if m.actif else 'Non' }}</td>
+        <td class="action-buttons">
+          <a href="{{ url_for('modifier_musicien', musicien_id=m.id) }}" class="edit-button">✏️</a>
+          <form method="POST" action="{{ url_for('supprimer_musicien', musicien_id=m.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce musicien ?');">
+            <button type="submit" class="delete-button">🗑</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    {% for s in structures %}
+      <tr class="structure-row" style="font-weight:bold; background:#f6f6fa;">
+        <td colspan="2">{{ s.nom }}</td>
+        <td colspan="2"></td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</form>
+    <div class="button-row">
+      <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+      <a href="{{ url_for('ajouter_musicien') }}" class="valider-button">+ Ajouter un musicien</a>
+    </div>
+  </div>
+</body>
+</html>

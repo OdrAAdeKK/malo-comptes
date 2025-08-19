@@ -1,0 +1,14 @@
+<!doctype html>
+<title>Ajouter une participation</title>
+<h1>Ajouter une participation à "{{ concert.lieu }}" ({{ concert.date.strftime("%d/%m/%Y") }})</h1>
+<form method="post">
+    Musicien :
+    <select name="musicien_id" required>
+        {% for m in musiciens %}
+        <option value="{{ m.id }}">{{ m.prenom }} {{ m.nom }}</option>
+        {% endfor %}
+    </select><br>
+    Payé : <input type="checkbox" name="paye"><br>
+    <button type="submit">Ajouter</button>
+</form>
+<p><a href="{{ url_for('liste_participations', concert_id=concert.id) }}">Retour à la liste</a></p>

@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block title %}Concerts archivés - Saison {{ saison }}{% endblock %}
+{% block body_class %}big-mode{% endblock %}
+
+{% block content %}
+
+<div class="container">
+    <h1>Concerts archivés - Saison {{ saison }}</h1>
+    {% include "_concerts_table.html" %}
+	<div class="button-row">
+		<a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+		<a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+		<a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
+		<a href="{{ url_for('concerts_non_payes_view') }}" class="	nonpayes-button">Non payés</a>
+		<a href="{{ url_for('liste_concerts') }}" class="a-venir-button">À venir</a>  <!-- ⬅ Nouveau bouton -->
+	</div>
+</div>
+
+<script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
+
+{% endblock %}

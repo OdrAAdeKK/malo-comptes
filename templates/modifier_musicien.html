@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Modifier un musicien</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 50px;
+      display: flex;
+      justify-content: center;
+    }
+    .form-container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-width: 400px;
+      width: 100%;
+    }
+    h1 {
+      font-size: 1.5em;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    input[type="checkbox"] {
+      transform: scale(1.25);
+      margin-right: 10px;
+      margin-top: 0;
+      vertical-align: middle;
+    }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      margin-bottom: 18px;
+      font-weight: normal;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #f9a825;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #f57f17;
+    }
+    .back-button {
+      display: block;
+      margin-top: 15px;
+      text-align: center;
+      padding: 10px 20px;
+      background-color: #4285f4;
+      color: white;
+      text-decoration: none;
+      border-radius: 5px;
+    }
+    .back-button:hover {
+      background-color: #3367d6;
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <h1>Modifier un musicien</h1>
+    <form method="POST">
+      <label for="prenom">Prénom</label>
+      <input type="text" name="prenom" id="prenom" value="{{ musicien.prenom or '' }}" required>
+
+      <label for="nom">Nom</label>
+      <input type="text" name="nom" id="nom" value="{{ musicien.nom or '' }}" required>
+
+      <label for="type">Type</label>
+      <select name="type" id="type" required>
+        <option value="musicien" {% if musicien.type == 'musicien' %}selected{% endif %}>Musicien</option>
+        <option value="structure" {% if musicien.type == 'structure' %}selected{% endif %}>Structure</option>
+      </select>
+
+      <div class="checkbox-label">
+        <input type="checkbox" name="actif" id="actif" {% if musicien.actif %}checked{% endif %}>
+        <label for="actif" style="margin:0;">Actif</label>
+      </div>
+
+      <button type="submit">Enregistrer les modifications</button>
+    </form>
+    <a class="back-button" href="{{ url_for('liste_musiciens') }}">← Retour à la liste</a>
+  </div>
+</body>
+</html>

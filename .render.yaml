@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: malo-comptes
+    env: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn App:app"
+    region: frankfurt
+    plan: free
+    envVars:
+      - key: FLASK_ENV
+        value: production

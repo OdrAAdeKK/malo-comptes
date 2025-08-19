@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <title>Archives des cachets</title>
+    <style>
+        .saisons-list {
+            list-style-type: none;
+            padding-left: 0;
+            margin: 0 0 28px 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            padding: 50px;
+            display: flex;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 36px;
+            border-radius: 12px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            max-width: 700px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 { margin-bottom: 30px; }
+        .btn-saison {
+            display: block;
+            padding: 16px 24px;
+            margin: 10px 0;
+            color: white;
+            font-size: 1.25rem;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            background-color: #a13e58;
+            transition: background 0.18s;
+        }
+        .btn-saison:hover {
+            background-color: #822e45;
+			    transform: scale(1.03);
+        }
+
+    </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Archives des cachets</h1>
+    <ul class="saisons-list">
+      {% for s in saisons %}
+        <li>
+          <a href="{{ url_for('archives_cachets_saison', saison=s.replace('/', '-')) }}" class="btn-saison">{{ s }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+	<div class="button-row">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+    <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+    <a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
+	<a href="{{ url_for('declarer_cachet') }}" class="nouv-cachets-button">Nouveau cachet</a>  <!-- ⬅ Nouveau bouton -->
+</div>
+  </div>
+</body>
+</html>

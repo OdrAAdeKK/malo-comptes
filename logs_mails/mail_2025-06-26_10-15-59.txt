@@ -1,0 +1,18 @@
+Objet : Déclaration des cachets MALO à venir : Juin et Juillet 2025
+
+
+    <p>Salut Lionel,</p>
+
+    <p>Voici la liste des cachets à déclarer pour MALO prochainement :</p>
+
+    <h2 style="font-size: 18px; font-weight: bold; margin-top: 20px;">Juin</h2>
+    <p style='margin-left: 20px;'><strong>Jérôme ARNOULD</strong><br>03/06/2025 – 250.00 €<br>04/06/2025 – 250.00 €<br>05/06/2025 – 250.00 €<br>10/06/2025 – 256.00 €<br>11/06/2025 – 256.00 €<br>12/06/2025 – 256.00 €<br>13/06/2025 – 220.00 €<br>14/06/2025 – 220.00 €<br>28/06/2025 – 256.00 €<br>29/06/2025 – 256.00 €<br>30/06/2025 – 220.00 €</p>
+<p style='margin-left: 20px;'><strong>Lionel ARNOULD</strong><br>12/06/2025 – 115.00 €<br>13/06/2025 – 115.00 €<br>14/06/2025 – 120.00 €<br>20/06/2025 – 140.00 €<br>21/06/2025 – 140.00 €<br>27/06/2025 – 115.00 €<br>28/06/2025 – 140.00 €<br>29/06/2025 – 120.00 €</p>
+<p style='margin-left: 20px;'><strong>Nathan BRAUD</strong><br>27/06/2025 – 120.00 €</p>
+<p style='margin-left: 20px;'><strong>Michel SCHICK</strong><br>17/06/2025 – 115.00 €<br>18/06/2025 – 115.00 €<br>27/06/2025 – 115.00 €</p>
+
+    <h2 style="font-size: 18px; font-weight: bold; margin-top: 20px;">Juillet</h2>
+    <p style='margin-left: 20px;'><strong>Lionel ARNOULD</strong><br>10/07/2025 – 140.00 €<br>11/07/2025 – 140.00 €<br>17/07/2025 – 140.00 €</p>
+
+    <p>Merci.<br>@+<br><br>Jérôme</p>
+    

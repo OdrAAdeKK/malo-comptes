@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Démo Autocomplete + Flatpickr</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        .concert-autocomplete-wrapper {
+            position: relative;
+            width: 380px;
+            margin: 60px auto 0;
+        }
+        .autocomplete-list {
+            position: absolute;
+            top: 100%;
+            left: 0; right: 0;
+            z-index: 99;
+            background: #fff;
+            border: 1px solid #bbb;
+            border-radius: 0 0 10px 10px;
+            max-height: 180px;
+            overflow-y: auto;
+            width: 100%;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.09);
+            font-size: 1em;
+            margin-top: 0px;
+            padding: 0;
+        }
+        .autocomplete-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            transition: background 0.13s;
+            border-bottom: 1px solid #f1f1f1;
+            background: #fff;
+        }
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+        .autocomplete-item:hover, .autocomplete-item.active {
+            background: #e3eaff;
+            color: #212162;
+        }
+        #calendar_icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            font-size: 1.25em;
+            z-index: 5;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px 38px 12px 9px;
+            font-size: 1.1em;
+            border-radius: 7px;
+            border: 1px solid #d2d2d7;
+            background: #fafafd;
+        }
+        label { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="concert-autocomplete-wrapper">
+        <label for="concert_field">Concert lié :</label>
+        <input type="text" id="concert_field" name="concert_field" autocomplete="off" placeholder="JJ/MM/AAAA ou sélection…">
+        <input type="hidden" id="concert_id" name="concert_id">
+        <span id="calendar_icon">📅</span>
+        <div id="concert_autocomplete" class="autocomplete-list"></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/fr.js"></script>
+    <script>
+        // Jeux de concerts (FAIS UNE COPIE EXACTE du format réel si besoin)
+        window.concerts = [
+            { id: 1, date: "2024-07-01", lieu: "Paris" },
+            { id: 2, date: "2024-07-15", lieu: "Versailles" },
+            { id: 3, date: "2024-08-01", lieu: "Lyon" },
+            { id: 4, date: "2024-08-09", lieu: "Strasbourg" },
+            { id: 5, date: "2024-09-10", lieu: "Nantes" }
+        ];
+        // Ci-dessous : la fonction JS nettoyée
+        function initConcertAutocomplete() {
+            const concertField = document.getElementById("concert_field");
+            const concertIdField = document.getElementById("concert_id");
+            const concertAutocomplete = document.getElementById("concert_autocomplete");
+            const calendarIcon = document.getElementById("calendar_icon");
+
+            const allConcerts = (window.concerts || []).map(c => {
+                const [y, m, d] = c.date.split("-");
+                return { ...c, dateFr: `${d}/${m}/${y}` };
+            });
+            let concerts = allConcerts.slice();
+            let fp = null;
+            let currentMatches = [];
+            let currentIndex = -1;
+            let selectByMouse = false;
+            let flatpickrIsOpen = false;
+
+            function formatDate(isoDate) {
+                const [year, month, day] = isoDate.split("-");
+                return `${day}/${month}/${year}`;
+            }
+
+            fp = flatpickr(concertField, {
+                dateFormat: "Y-m-d",
+                locale: flatpickr.l10ns.fr,
+                enable: concerts.map(c => c.date),
+                clickOpens: false,
+                allowInput: true,
+                onOpen: function() {
+                    flatpickrIsOpen = true;
+                    concertAutocomplete.style.display = "none";
+                },
+                onClose: function() {
+                    flatpickrIsOpen = false;
+                },
+                onChange: function(selectedDates, dateStr) {
+                    const concert = concerts.find(c => c.date === dateStr);
+                    if (concert) fillConcert(concert);
+                }
+            });
+
+            if (calendarIcon) {
+                calendarIcon.addEventListener("click", function () {
+                    if (!concertField.disabled) fp.open();
+                });
+            }
+
+            function fillConcert(concert) {
+                concertField.value = `${concert.dateFr} — ${concert.lieu}`;
+                concertIdField.value = concert.id;
+                concertAutocomplete.style.display = "none";
+            }
+
+            concertField.addEventListener("input", function () {
+                if (flatpickrIsOpen) return;
+                const value = concertField.value.trim().toLowerCase();
+                concertAutocomplete.innerHTML = "";
+                concertIdField.value = "";
+
+                if (value.length < 1) {
+                    concertAutocomplete.style.display = "none";
+                    return;
+                }
+                currentMatches = concerts.filter(c => {
+                    const label = `${c.dateFr} — ${c.lieu}`.toLowerCase();
+                    const words = label.split(/[\s—]+/);
+                    return words.some(word => word.startsWith(value));
+                });
+                currentIndex = -1;
+                if (currentMatches.length === 0) {
+                    concertAutocomplete.style.display = "none";
+                    return;
+                }
+
+                currentMatches.forEach((c, i) => {
+                    const item = document.createElement("div");
+                    item.textContent = `${c.dateFr} — ${c.lieu}`;
+                    item.className = "autocomplete-item";
+                    item.tabIndex = -1;
+                    item.addEventListener("mousedown", function (e) {
+                        selectByMouse = true;
+                        fillConcert(c);
+                    });
+                    item.addEventListener("mouseenter", function () {
+                        currentIndex = i;
+                        updateHighlight();
+                    });
+                    concertAutocomplete.appendChild(item);
+                });
+                concertAutocomplete.style.display = "block";
+            });
+
+            function updateHighlight() {
+                const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+                items.forEach((item, i) => {
+                    item.style.background = (i === currentIndex) ? "#eef" : "white";
+                });
+            }
+
+            concertField.addEventListener("keydown", function (e) {
+                if (flatpickrIsOpen) return;
+                const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+                if (items.length === 0) return;
+                if (concertIdField.value && !["Tab", "ArrowUp", "ArrowDown"].includes(e.key)) {
+                    e.preventDefault();
+                    return;
+                }
+                if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    currentIndex = (currentIndex + 1) % items.length;
+                    updateHighlight();
+                } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    currentIndex = (currentIndex - 1 + items.length) % items.length;
+                    updateHighlight();
+                } else if (e.key === "Tab" || e.key === "Enter") {
+                    if (currentIndex >= 0) {
+                        e.preventDefault();
+                        fillConcert(currentMatches[currentIndex]);
+                    }
+                } else if (e.key === "Escape") {
+                    concertAutocomplete.style.display = "none";
+                }
+            });
+
+            concertField.addEventListener("blur", function () {
+                setTimeout(() => {
+                    if (concertIdField.value || selectByMouse) {
+                        concertAutocomplete.style.display = "none";
+                        selectByMouse = false;
+                        return;
+                    }
+                    concertAutocomplete.style.display = "none";
+                    concertField.value = "";
+                    concertIdField.value = "";
+                }, 120);
+            });
+
+            concertField.addEventListener("focus", function () {
+                if (flatpickrIsOpen) return;
+                if (concertIdField.value) return;
+                if (concertField.value.trim()) {
+                    concertField.dispatchEvent(new Event("input"));
+                }
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            initConcertAutocomplete();
+        });
+    </script>
+</body>
+</html>
