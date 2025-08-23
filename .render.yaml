@@ -5,31 +5,12 @@ services:
     region: frankfurt
     plan: free
     autoDeploy: true
-
-    buildCommand: |
-      pip install --upgrade pip
-      pip install -r requirements.txt
-
-    # Gunicorn: 2 workers, threads, timeout 120s, bind sur $PORT (obligatoire chez Render)
+    buildCommand: "pip install --upgrade pip && pip install -r requirements-prod.txt"
     startCommand: "gunicorn -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT App:app"
-
-    # (Optionnel) lancer les migrations + création/ensure des structures après chaque deploy
-    postDeployCommand: |
-      flask db upgrade || true
-      python ajout_structures.py --ensure || true
-
-    # (Optionnel) health check; mets le chemin d'une page légère qui renvoie 200
-    healthCheckPath: /accueil
-
     envVars:
       - key: FLASK_ENV
         value: production
-      - key: FLASK_APP
-        value: App.py          # pour que 'flask db upgrade' sache où est l'app
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        sync: false            # tu le renseignes dans le dashboard Render
-      # (Optionnel) force la version de Python si besoin
-      # - key: PYTHON_VERSION
-      #   value: 3.12.4
+        sync: false
