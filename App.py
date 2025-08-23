@@ -86,7 +86,7 @@ from mes_utils import (
     ajouter_cachets, formulaire_to_data, enregistrer_operation_en_db,
     valider_concert_par_operation, concert_to_dict, get_debut_fin_saison,
     get_ordered_comptes_bis, get_reports_dict, extraire_infos_depuis_pdf,
-    mois_fr, regrouper_cachets_par_mois,
+    mois_fr, regrouper_cachets_par_mois, basculer_statut_paiement_concert,
 )
 
 COULEURS_MOIS = {
@@ -141,41 +141,123 @@ def liste_musiciens():
 
 
 
+from sqlalchemy import func, or_, not_
+
 # Créer/ajouter
 @app.route('/ajouter_musicien', methods=['GET', 'POST'])
 def ajouter_musicien():
     erreur = None
-    if request.method == 'POST':
-        prenom   = (request.form.get('prenom') or '').strip()
-        nom      = (request.form.get('nom') or '').strip()
-        type_val = (request.form.get('type') or 'personne').strip().lower()
-        actif    = bool(request.form.get('actif'))
+    # pour re-remplir le formulaire en cas d'erreur
+    form_vals = {
+        "prenom": (request.form.get('prenom') or '').strip(),
+        "nom": (request.form.get('nom') or '').strip(),
+        "type": (request.form.get('type') or '').strip(),
+        "actif": request.form.get('actif')
+    }
 
-        # règles de validation
+    if request.method == 'POST':
+        prenom_raw = (request.form.get('prenom') or '').strip()
+        nom_raw    = (request.form.get('nom') or '').strip()
+        type_raw   = (request.form.get('type') or '').strip().lower()
+        actif_raw  = (request.form.get('actif') or '').strip().lower()
+        actif      = actif_raw in ('on', 'true', '1', 'yes')
+
+        # --- Normalisations ---
+        # mappe l'ancien "personne" vers "musicien"
+        mapping_type = {
+            "personne": "musicien",
+            "musicien": "musicien",
+            "musiciens": "musicien",
+            "structure": "structure",
+            "structures": "structure",
+            "asso": "structure",
+            "association": "structure",
+        }
+        type_val = mapping_type.get(type_raw, type_raw)
+
+        # nettoyage basique
+        def _clean(s):
+            return " ".join((s or "").replace("\xa0", " ").split())
+
+        prenom = _clean(prenom_raw)
+        nom    = _clean(nom_raw)
+
+        # Mise en forme d'affichage
+        def _fmt_nom_personne(n):
+            # NOM en majuscules
+            return (n or "").upper()
+
+        def _fmt_prenom(p):
+            # Jérôme → Jérôme (title-case simple)
+            return p.capitalize() if p else ""
+
+        def _fmt_nom_structure(n):
+            # Structures en MAJ (ASSO7, CB ASSO7…)
+            return (n or "").upper()
+
+        # --- Règles de validation ---
         if not nom:
             erreur = "Le nom est obligatoire."
-        elif type_val not in ('personne', 'structure'):
-            erreur = "Type invalide."
-        elif type_val == 'personne' and not prenom:
-            erreur = "Le prénom est obligatoire pour un musicien de type 'personne'."
+        elif type_val not in ('musicien', 'structure'):
+            erreur = "Type invalide. Choisissez 'musicien' ou 'structure'."
+        elif type_val == 'musicien' and not prenom:
+            erreur = "Le prénom est obligatoire pour un musicien."
 
+        # --- Vérifs doublons + insertion ---
         if not erreur:
-            # éviter les doublons (on tient compte du type)
-            exist = Musicien.query.filter_by(nom=nom, prenom=(prenom if type_val != 'structure' else ''), type=type_val).first()
-            if exist:
-                erreur = "Cet(te) musicien(ne)/structure existe déjà."
-            else:
-                m = Musicien(
-                    nom=nom,
-                    prenom=(prenom if type_val != 'structure' else ''),  # prénom vide si structure
-                    type=type_val,
-                    actif=actif
-                )
-                db.session.add(m)
-                db.session.commit()
-                return redirect(url_for('liste_musiciens'))
+            if type_val == 'musicien':
+                nom_fmt = _fmt_nom_personne(nom)
+                prenom_fmt = _fmt_prenom(prenom)
 
-    return render_template('ajouter_musicien.html', erreur=erreur)
+                # doublon insensible à la casse/espaces
+                exist = (
+                    Musicien.query
+                    .filter(
+                        func.lower(func.trim(Musicien.nom)) == nom.lower(),
+                        func.lower(func.trim(Musicien.prenom)) == prenom.lower()
+                    )
+                    .first()
+                )
+                if exist:
+                    erreur = "Ce musicien existe déjà."
+                else:
+                    m = Musicien(
+                        nom=nom_fmt,
+                        prenom=prenom_fmt,
+                        type='musicien',
+                        actif=actif
+                    )
+                    db.session.add(m)
+                    db.session.commit()
+                    return redirect(url_for('liste_musiciens'))
+
+            else:  # structure
+                nom_fmt = _fmt_nom_structure(nom)
+                # prenom forcé vide pour structure
+                exist = (
+                    Musicien.query
+                    .filter(
+                        func.lower(func.trim(Musicien.nom)) == nom.lower(),
+                        or_(Musicien.prenom.is_(None), func.trim(Musicien.prenom) == "")
+                    )
+                    .first()
+                )
+                if exist:
+                    erreur = "Cette structure existe déjà."
+                else:
+                    m = Musicien(
+                        nom=nom_fmt,
+                        prenom="",
+                        type='structure',
+                        actif=actif
+                    )
+                    db.session.add(m)
+                    db.session.commit()
+                    return redirect(url_for('liste_musiciens'))
+
+    # GET ou POST avec erreur → on réaffiche le formulaire avec le message
+    return render_template('ajouter_musicien.html', erreur=erreur, **form_vals)
+
 
 
 # Mettre à jour/modifier
@@ -404,119 +486,94 @@ def concerts_non_payes_view():
 
 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
 
+from sqlalchemy import func  # si pas déjà importé
+
 @app.route('/concerts/<int:concert_id>/toggle_paye', methods=['POST'])
 def toggle_concert_paye(concert_id):
     concert = Concert.query.get(concert_id)
-    if concert:
-        concert.paye = not concert.paye
-        db.session.commit()
-        db.session.refresh(concert)
+    if not concert:
+        return "Concert non trouvé", 404
 
-        from calcul_participations import (
-            mettre_a_jour_credit_calcule_potentiel_pour_concert,
-            mettre_a_jour_credit_calcule_reel_pour_concert
-        )
-
-        # 🔍 Vérifie s'il y a déjà des participations
-        participations_existantes = Participation.query.filter_by(concert_id=concert.id).count()
-
-        if concert.paye:
-            print(f"[✓] Recalcul crédit CALCULÉ pour concert payé id={concert.id}")
-            if participations_existantes == 0:
-                print(f"⚠️ Pas de participations existantes → recalcul complet CALCULÉ")
-                mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
-            else:
-                mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
-        else:
-            print(f"[✓] Recalcul crédit POTENTIEL pour concert non payé id={concert.id}")
-            if participations_existantes == 0:
-                print(f"⚠️ Pas de participations existantes → recalcul complet POTENTIEL")
-                mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
-            else:
-                mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
-
-        return redirect(url_for('archives_concerts' if concert.paye else 'liste_concerts'))
-
-    return "Concert non trouvé", 404
+    etat_cible = not concert.paye
+    try:
+        res = basculer_statut_paiement_concert(concert_id, paye=etat_cible)
+        # même comportement qu'avant côté redirection
+        return redirect(url_for('archives_concerts' if etat_cible else 'liste_concerts'))
+    except Exception as e:
+        print(f"❌ toggle_paye error concert {concert_id}: {e}")
+        return "Erreur serveur", 500
 
 
 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
 
 @app.route("/valider_paiement_concert", methods=["POST"])
 def valider_paiement_concert():
-    from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+    # import ici pour éviter les import cycles et s'assurer que la dernière version est utilisée
+    from mes_utils import basculer_statut_paiement_concert
 
-    data = request.get_json()
-    concert_id = data.get("concert_id")
-    compte = data.get("compte")
-    recette = data.get("recette")  # 👈 recette éventuellement transmise depuis le JS
+    data_json = request.get_json(silent=True) or {}
+    data_form = request.form.to_dict() if request.form else {}
+    data = {**data_form, **data_json}
+
+    try:
+        app.logger.info(f"[valider_paiement_concert] Payload reçu: {data}")
+    except Exception:
+        print(f"[valider_paiement_concert] Payload reçu: {data}")
+
+    def _to_int(x):
+        try:
+            return int(str(x).strip())
+        except Exception:
+            return None
+
+    def _to_float(x):
+        if x is None:
+            return None
+        s = str(x).strip().replace(",", ".")
+        if not s:
+            return None
+        try:
+            return float(s)
+        except Exception:
+            return None
+
+    concert_id = _to_int(data.get("concert_id") or data.get("concertId"))
+    if concert_id is None:
+        return jsonify(success=False, message="concert_id manquant ou invalide"), 422
+
+    compte = (data.get("compte") or "").strip()
+    recette_val = _to_float(data.get("recette"))
 
     concert = Concert.query.get(concert_id)
     if not concert:
-        return jsonify(success=False, message="Concert introuvable")
+        return jsonify(success=False, message=f"Concert introuvable (id={concert_id})"), 404
 
     try:
-        if recette:
-            concert.recette = float(recette)
-        elif concert.recette_attendue:
-            concert.recette = concert.recette_attendue
-        else:
-            concert.recette = 0.0
-
-        concert.paye = True
-        concert.recette_attendue = None  # 🔄 une fois payé, on efface la valeur prévisionnelle
-
-        # 👉 Création automatique de l’opération de recette ici si besoin...
-
-        db.session.commit()
-
-        from calcul_participations import mettre_a_jour_credit_calcule_reel_pour_concert
-        mettre_a_jour_credit_calcule_reel_pour_concert(concert_id)
-
-        return jsonify(success=True)
+        res = basculer_statut_paiement_concert(
+            concert_id=concert_id,
+            paye=True,
+            montant=recette_val,   # None => prendra recette_attendue
+            mode=compte            # "CB ASSO7" / "CAISSE ASSO7" / "Compte" / "Espèces"
+        )
+        return jsonify(success=True, **res)
     except Exception as e:
-        db.session.rollback()
-        return jsonify(success=False, message=str(e))
+        import traceback; traceback.print_exc()
+        return jsonify(success=False, message=f"Erreur: {e}"), 500
+
+
 
 
 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
 
 @app.route("/annuler_paiement_concert", methods=["POST"])
 def annuler_paiement_concert():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     concert_id = data.get("concert_id")
-    concert = Concert.query.get(concert_id)
-
-    if not concert:
-        return jsonify(success=False, message="Concert introuvable.")
-
     try:
-        # ➤ Restaurer la recette_attendue
-        if concert.recette and (concert.recette_attendue is None or concert.recette_attendue == 0):
-            concert.recette_attendue = concert.recette
-
-        # ➤ Supprimer la recette réelle
-        concert.recette = None
-
-        # ➤ Marquer comme non payé
-        concert.paye = False
-
-        # ➤ Supprimer l’opération liée de recette
-        op_recette = next((op for op in concert.operations if op.nature == "Recette concert"), None)
-        if op_recette:
-            db.session.delete(op_recette)
-            print(f"[−] Opération recette supprimée (id={op_recette.id})")
-
-        # ➤ Réinitialisation + recalcul participations
-        mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
-
-        db.session.commit()
-        print(f"[✓] Paiement annulé pour concert id={concert.id}")
-        return jsonify(success=True)
-
+        res = basculer_statut_paiement_concert(int(concert_id), paye=False)
+        return jsonify(success=True, **res)
     except Exception as e:
-        db.session.rollback()
-        return jsonify(success=False, message=str(e))
+        return jsonify(success=False, message=str(e)), 500
 
 
 
@@ -747,15 +804,21 @@ def modifier_operation(id):
 
 @app.route('/operations/supprimer', methods=['POST'])
 def supprimer_operation():
-    data = request.get_json()
-    operation_id = data['id']
-    operation = Operation.query.get(operation_id)
+    from mes_utils import supprimer_operation_en_db  # helper cascade
+    data = request.get_json(silent=True) or {}
+    operation_id = data.get('id')
 
+    if not operation_id:
+        return jsonify({'success': False, 'message': 'ID d’opération manquant'}), 400
+
+    # Récupération de l’opération
+    operation = db.session.get(Operation, int(operation_id))
     if not operation:
         return jsonify({'success': False, 'message': 'Opération introuvable'}), 404
 
+    motif_norm = (operation.motif or '').strip().lower()
     # 🚫 Interdiction de supprimer une opération de Commission Lionel directement
-    if (operation.motif or '').strip().lower() == "commission lionel":
+    if motif_norm == "commission lionel":
         return jsonify({
             'success': False,
             'message': "Cette opération est générée automatiquement et ne peut être supprimée directement."
@@ -764,14 +827,45 @@ def supprimer_operation():
     # Sauvegarde du concert_id AVANT suppression
     concert_id = operation.concert_id
 
-    success = annuler_operation(operation_id)
+    try:
+        # Cas 1 : suppression d'une opération principale "Salaire" -> cascade
+        if motif_norm == "salaire":
+            supprimer_operation_en_db(operation.id)
+            success = True
 
-    # ✅ Recalcul des participations si concert concerné
-    if concert_id:
-        from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
-        mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
+        # Cas 2 : on tente de supprimer le débit auto salaire (CB/CAISSE)
+        elif bool(getattr(operation, "auto_debit_salaire", False)):
+            # On cherche l'opération racine (Salaire) via operation_liee_id
+            racine = None
+            if operation.operation_liee_id:
+                racine = db.session.get(Operation, operation.operation_liee_id)
+            # Si pas trouvé, on tente l'inverse (lien réciproque éventuel)
+            if not racine:
+                racine = Operation.query.filter_by(operation_liee_id=operation.id, motif="Salaire").first()
 
-    return jsonify({'success': success})
+            if racine and (racine.motif or '').strip().lower() == "salaire":
+                supprimer_operation_en_db(racine.id)
+                success = True
+            else:
+                # À défaut, on supprime au moins l’opération demandée
+                # (mais normalement on devrait trouver la racine)
+                supprimer_operation_en_db(operation.id)
+                success = True
+
+        # Cas 3 : autre opération -> comportement existant
+        else:
+            success = annuler_operation(operation.id)
+
+        # ✅ Recalcul des participations si concert concerné
+        if concert_id:
+            from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+            mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
+
+        return jsonify({'success': bool(success)})
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @app.route("/operations_a_venir")

@@ -129,7 +129,8 @@
 </table>
 </form>
     <div class="button-row">
-      <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+      <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+	  <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
       <a href="{{ url_for('ajouter_musicien') }}" class="valider-button">+ Ajouter un musicien</a>
     </div>
   </div>

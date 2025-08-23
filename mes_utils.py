@@ -18,7 +18,7 @@ from flask import current_app
 # 📦 Librairies tierces
 import fitz  # PyMuPDF
 from dotenv import load_dotenv
-from sqlalchemy import and_, extract, func
+from sqlalchemy import and_, extract, func, or_
 
 # 📁 Modules internes
 from models import db, Cachet, Concert, Musicien
@@ -426,6 +426,82 @@ def preparer_concerts_par_musicien():
 
     return mapping
 
+# en haut si pas déjà importés
+from sqlalchemy import func, or_
+
+ALLOWED_TYPES = {"musicien", "structure"}
+
+def _normalize_type(raw: str | None) -> str | None:
+    s = (raw or "").strip().lower()
+    # synonymes acceptés
+    mapping = {
+        "musicien": "musicien",
+        "musiciens": "musicien",
+        "pers": "musicien",
+        "personne": "musicien",  # legacy mappé vers "musicien"
+        "structure": "structure",
+        "structures": "structure",
+        "asso": "structure",
+        "association": "structure",
+    }
+    t = mapping.get(s, s)
+    return t if t in ALLOWED_TYPES else None
+
+def _clean(s: str | None) -> str:
+    return " ".join((s or "").replace("\xa0", " ").split())
+
+def _display_case_nom(nom: str) -> str:
+    # conserve majuscules des sigles (ASSO7, CB ASSO7) si tout en majuscules
+    if nom.isupper():
+        return nom
+    return nom.upper()  # pour les NOMs des personnes on garde majuscules
+
+def _display_case_prenom(p: str) -> str:
+    # Jérôme, Nathalie, etc. (simple title-case)
+    return p.capitalize() if p else ""
+
+def sanitize_musicien_payload(payload: dict) -> dict:
+    """
+    Valide et normalise les champs pour créer un musicien OU une structure.
+    - type ∈ {'musicien', 'structure'} sinon ValueError
+    - musiciens: prénom & nom obligatoires
+    - structures: nom obligatoire, prénom forcé vide
+    - normalise et empêche les doublons évidents
+    """
+    t = _normalize_type(payload.get("type"))
+    if not t:
+        raise ValueError("Type invalide. Valeurs autorisées : 'musicien' ou 'structure'.")
+
+    nom = _clean(payload.get("nom"))
+    prenom = _clean(payload.get("prenom"))
+
+    if t == "musicien":
+        if not nom or not prenom:
+            raise ValueError("Pour un musicien, 'prenom' et 'nom' sont obligatoires.")
+        nom_aff = _display_case_nom(nom)
+        prenom_aff = _display_case_prenom(prenom)
+        # doublon: même prenom+nom (insensible casse/espaces)
+        exists = Musicien.query.filter(
+            func.lower(func.trim(Musicien.nom)) == nom.lower(),
+            func.lower(func.trim(Musicien.prenom)) == prenom.lower()
+        ).first()
+        if exists:
+            raise ValueError("Ce musicien existe déjà.")
+        return {"type": "musicien", "nom": nom_aff, "prenom": prenom_aff, "actif": True}
+
+    else:  # structure
+        if not nom:
+            raise ValueError("Pour une structure, 'nom' est obligatoire.")
+        prenom_aff = ""  # pas de prénom pour une structure
+        nom_aff = nom.upper()  # les structures en MAJ (ASSO7, CB ASSO7…)
+        # doublon: même nom (insensible casse/espaces) et pas de prénom
+        exists = Musicien.query.filter(
+            func.lower(func.trim(Musicien.nom)) == nom.lower(),
+            or_(Musicien.prenom.is_(None), func.trim(Musicien.prenom) == "")
+        ).first()
+        if exists:
+            raise ValueError("Cette structure existe déjà.")
+        return {"type": "structure", "nom": nom_aff, "prenom": prenom_aff, "actif": True}
 
 
 
@@ -555,6 +631,277 @@ def concert_to_dict(concert):
         "recette_attendue": concert.recette_attendue,
         "paye": concert.paye,
     }
+
+
+def creer_recette_concert_si_absente(concert_id, montant=None, date_op=None, mode=None):
+    """
+    Crée (si absente) l'opération de crédit 'Recette concert' au profit de CB ASSO7 ou CAISSE ASSO7,
+    déterminés à partir du 'mode' effectif : accepte 'Compte' / 'Espèces' ET 'CB_ASSO7' / 'CAISSE_ASSO7'
+    (ainsi que variantes 'cb asso7', 'caisse asso7', etc.).
+    AUCUN fallback vers 'ASSO7' : si on ne trouve pas le bénéficiaire, on lève une erreur.
+    Idempotent sur (motif='Recette concert', concert_id=...).
+    """
+    concert = Concert.query.get(concert_id)
+    if not concert:
+        raise ValueError(f"Concert introuvable id={concert_id}")
+
+    # -- Montant --
+    montant_final = (
+        float(montant) if montant is not None
+        else float(concert.recette if concert.recette is not None
+                   else (concert.recette_attendue or 0.0))
+    )
+    if montant_final <= 0:
+        print(f"[WARN] Recette concert id={concert_id} avec montant <= 0 : rien créé.")
+        return None
+
+    # -- Date --
+    from datetime import date as _date
+    date_finale = date_op or getattr(concert, "date", None) or _date.today()
+
+    # -- Résolution du bénéficiaire à partir du 'mode' effectif --
+    #    On accepte : "Compte", "CB_ASSO7", "cb asso7", "Espèces", "CAISSE_ASSO7", "caisse asso7", etc.
+    def _norm(s: str) -> str:
+        s = (s or "").strip().lower()
+        # simpliste mais efficace (évite d'ajouter une dépendance unidecode)
+        remap = str.maketrans({"é": "e", "è": "e", "ê": "e", "à": "a", "ù": "u", "ï": "i", "î": "i", "ô": "o", "ç": "c"})
+        s = s.translate(remap)
+        for ch in ("_", "-", ".", "/"):
+            s = s.replace(ch, " ")
+        s = " ".join(s.split())
+        return s
+
+    mode_eff = _norm(mode or getattr(concert, "mode_paiement_prevu", "") or "compte")
+
+    # Dictionnaire des intentions → cible
+    # tout ce qui ressemble à "compte" ou "cb..." => CB ASSO7
+    # tout ce qui ressemble à "especes" ou "caisse..." => CAISSE ASSO7
+    def _is_cb(key: str) -> bool:
+        return any(tok in key for tok in [
+            "compte", "cb asso7", "cbasso7", "cb", "cb asso", "cb_asso7"
+        ])
+
+    def _is_caisse(key: str) -> bool:
+        return any(tok in key for tok in [
+            "especes", "espece", "caisse asso7", "caisseasso7", "caisse", "caisse_asso7"
+        ])
+
+    musiciens = Musicien.query.all()
+
+    def _find_by_nom(targets):
+        return next(
+            (m for m in musiciens if (m.nom or "").strip().lower() in targets),
+            None
+        )
+
+    cible_benef = None
+    if _is_cb(mode_eff):
+        cible_benef = _find_by_nom({"cb asso7"})
+    elif _is_caisse(mode_eff):
+        cible_benef = _find_by_nom({"caisse asso7"})
+
+    if not cible_benef:
+        raise ValueError(
+            f"Impossible de déterminer le bénéficiaire de la recette pour mode='{mode}'. "
+            f"Attendu: CB ASSO7 ou CAISSE ASSO7."
+        )
+
+    # -- Idempotence : existe déjà ? --
+    op_existante = Operation.query.filter_by(
+        motif="Recette concert",
+        concert_id=concert.id
+    ).first()
+
+    if op_existante:
+        maj = False
+        if float(op_existante.montant or 0) != float(montant_final):
+            op_existante.montant = float(montant_final); maj = True
+        if getattr(op_existante, "date", None) != date_finale:
+            op_existante.date = date_finale; maj = True
+        if getattr(op_existante, "musicien_id", None) != cible_benef.id:
+            op_existante.musicien_id = cible_benef.id; maj = True
+        if maj:
+            db.session.add(op_existante)
+    else:
+        # -- Création --
+        op = Operation(
+            musicien_id=cible_benef.id,
+            type="credit",
+            motif="Recette concert",
+            precision=(f"Recette concert {getattr(concert, 'titre', '') or ''}").strip() or None,
+            montant=float(montant_final),
+            date=date_finale,
+            concert_id=concert.id,
+            # Surtout PAS auto_cb_asso7=True : on veut que ça apparaisse dans les archives.
+        )
+        db.session.add(op)
+
+    # Marquer payé si besoin (normalement déjà géré par l'appelant, mais idempotent)
+    if not concert.paye:
+        concert.paye = True
+        db.session.add(concert)
+
+    db.session.flush()  # s'assure des IDs
+    # pas de commit ici : on laisse la route appeler commit, puis recalculer
+    return True
+
+def supprimer_recette_concert_pour_concert(concert_id: int) -> int:
+    """
+    Supprime TOUTE opération 'Recette concert' liée à un concert (idempotent).
+    On identifie en priorité par motif/precision normalisés côté Python, mais on
+    récupère toutes les opérations par concert_id pour éviter les ratés SQL.
+    Retourne le nombre d'opérations supprimées.
+    """
+    def _norm(s: str) -> str:
+        s = (s or "").replace("\xa0", " ").strip().lower()
+        # remplace accents usuels sans dépendance externe
+        table = str.maketrans({
+            "é": "e", "è": "e", "ê": "e", "ë": "e",
+            "à": "a", "â": "a",
+            "î": "i", "ï": "i",
+            "ô": "o",
+            "ù": "u", "û": "u",
+            "ç": "c",
+        })
+        s = s.translate(table)
+        # condense espaces multiples
+        s = " ".join(s.split())
+        return s
+
+    ops = Operation.query.filter_by(concert_id=concert_id).all()
+    if not ops:
+        return 0
+
+    # 1) Cible stricte : motif == "recette concert" (normalisé) OU precision contient "recette concert"
+    candidats = []
+    for o in ops:
+        motif_n = _norm(o.motif)
+        prec_n = _norm(getattr(o, "precision", None))
+        if motif_n == "recette concert" or "recette concert" in prec_n:
+            candidats.append(o)
+
+    # 2) Fallback prudent : type=credit et (motif contient 'recette' ET 'concert')
+    if not candidats:
+        for o in ops:
+            motif_n = _norm(o.motif)
+            if (o.type or "").strip().lower() == "credit" and ("recette" in motif_n and "concert" in motif_n):
+                candidats.append(o)
+
+    if not candidats:
+        print(f"[INFO] Aucune 'Recette concert' détectée pour concert_id={concert_id}")
+        return 0
+
+    # Supprime via le helper cascade qui gère les FKs auto-référentes
+    suppr_count = 0
+    for o in candidats:
+        try:
+            supprimer_operation_en_db(o.id)  # déjà transaction-safe
+            suppr_count += 1
+        except Exception as e:
+            print(f"[WARN] Suppression op 'Recette concert' id={o.id} échouée: {e}")
+
+    print(f"[OK] {suppr_count} opération(s) 'Recette concert' supprimée(s) pour concert_id={concert_id}")
+    return suppr_count
+    
+def basculer_statut_paiement_concert(concert_id: int, paye: bool, montant: float | None = None, mode: str | None = None):
+    from calcul_participations import (
+        mettre_a_jour_credit_calcule_reel_pour_concert,
+        mettre_a_jour_credit_calcule_potentiel_pour_concert,
+    )
+    from mes_utils import creer_recette_concert_si_absente, supprimer_recette_concert_pour_concert
+    
+    concert = Concert.query.get(concert_id)
+    if not concert:
+        raise ValueError(f"Concert introuvable id={concert_id}")
+
+    # utilitaires locaux
+    def _to_float(x):
+        if x is None:
+            return None
+        s = str(x).strip().replace(",", ".")
+        return float(s) if s else None
+
+    if paye:
+        # ===== NON PAYÉ -> PAYÉ =====
+        # 1) Déterminer recette finale
+        montant_val = _to_float(montant)
+        if montant_val is not None:
+            concert.recette = montant_val
+        elif concert.recette_attendue is not None:
+            concert.recette = float(concert.recette_attendue)
+        else:
+            concert.recette = float(concert.recette or 0.0)
+
+        # 2) Etat payé + nettoyer la prévision
+        concert.paye = True
+        concert.recette_attendue = None
+        db.session.add(concert)
+
+        # 3) Créer (si absente) l'opération 'Recette concert' vers le bon compte
+        mode_final = (mode or getattr(concert, "mode_paiement_prevu", "") or "Compte").strip()
+        creer_recette_concert_si_absente(
+            concert_id=concert.id,
+            montant=concert.recette,
+            date_op=None,
+            mode=mode_final
+        )
+
+        # 4) Commit + recalcul réel
+        db.session.commit()
+        try:
+            db.session.expire_all()
+            mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
+            db.session.commit()
+        except Exception as e:
+            print(f"[WARN] recalcul réel échoué pour concert {concert.id}: {e}")
+
+        return {
+            "concert_id": concert.id,
+            "paye": True,
+            "recette": concert.recette,
+            "mode": mode_final,
+        }
+
+    else:
+        # ===== PAYÉ -> NON PAYÉ =====
+        try:
+            # 1) Restaurer recette_attendue si absente
+            if (concert.recette_attendue is None) and (concert.recette is not None):
+                try:
+                    concert.recette_attendue = float(concert.recette) or 0.0
+                except Exception:
+                    concert.recette_attendue = 0.0
+
+            # 2) Supprimer opérations 'Recette concert'
+            nb_suppr = supprimer_recette_concert_pour_concert(concert.id)
+            print(f"[INFO] {nb_suppr} op(s) 'Recette concert' supprimée(s) pour concert_id={concert.id}")
+
+            # 3) Etat non payé + nettoyer recette
+            concert.recette = None
+            concert.paye = False
+            db.session.add(concert)
+
+            # 4) Commit + recalcul potentiel
+            db.session.commit()
+            try:
+                db.session.expire_all()
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
+                db.session.commit()
+            except Exception as e:
+                print(f"[WARN] recalcul potentiel échoué pour concert {concert.id}: {e}")
+
+            return {
+                "concert_id": concert.id,
+                "paye": False,
+                "recette_attendue": float(concert.recette_attendue or 0.0),
+                "recettes_supprimees": nb_suppr,
+            }
+
+        except Exception as e:
+            db.session.rollback()
+            raise
+
+
 
 # ─────────────────────────────────────────────
 # 5. 💸 GESTION DES OPÉRATIONS
@@ -740,6 +1087,83 @@ def enregistrer_operation_en_db(data):
         raise
 
 
+def supprimer_operation_en_db(operation_id: int):
+    """
+    Supprime une opération et TOUTES ses opérations liées, en cassant d'abord les FK (operation_liee_id) pour éviter
+    la violation de contrainte sur la table auto-référente 'operations'.
+
+    Stratégie :
+      1) Explore le graphe des liens via operation_liee_id (enfants directs et indirects + pair réciproque éventuel).
+      2) Met operation_liee_id = NULL sur TOUTES les lignes qui pointent vers l'un des IDs à supprimer (y compris entre elles).
+      3) Supprime les opérations collectées.
+      4) Commit + recalcul éventuel si concert associé.
+    """
+    op = db.session.get(Operation, operation_id)
+    if not op:
+        raise ValueError(f"Opération ID={operation_id} introuvable.")
+
+    # --- 1) Construire l'ensemble des opérations à supprimer (cascade applicative) ---
+    to_delete = set()
+    stack = [op]
+
+    seen = set()
+    while stack:
+        cur = stack.pop()
+        if cur.id in seen:
+            continue
+        seen.add(cur.id)
+        to_delete.add(cur)
+
+        # enfants (ceux qui pointent vers cur)
+        enfants = Operation.query.filter_by(operation_liee_id=cur.id).all()
+        for e in enfants:
+            if e.id not in seen:
+                stack.append(e)
+
+        # lien réciproque éventuel (cur pointe vers un "pair")
+        if cur.operation_liee_id:
+            pair = db.session.get(Operation, cur.operation_liee_id)
+            if pair and pair.id not in seen:
+                stack.append(pair)
+
+    if not to_delete:
+        return True
+
+    ids_to_delete = [o.id for o in to_delete]
+
+    # --- 2) Casser TOUTES les références vers ces IDs (y compris références croisées dans le lot) ---
+    try:
+        # Mettre operation_liee_id = NULL pour toute ligne (dans toute la table) qui référence l'un des IDs
+        # synchronize_session=False : plus efficace, on flush ensuite.
+        (
+            db.session.query(Operation)
+            .filter(Operation.operation_liee_id.in_(ids_to_delete))
+            .update({Operation.operation_liee_id: None}, synchronize_session=False)
+        )
+        db.session.flush()
+
+        # --- 3) Supprimer les opérations collectées ---
+        # On peut supprimer dans n'importe quel ordre maintenant que les FK sont nullifiées
+        for o in to_delete:
+            db.session.delete(o)
+
+        db.session.commit()
+
+        # --- 4) Recalcul éventuel si une des opérations supprimées concernait un concert ---
+        try:
+            # On tente un recalcul minimal : si l'op initiale avait un concert_id
+            if getattr(op, "concert_id", None):
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(op.concert_id)
+        except Exception as e:
+            print(f"[WARN] recalcul après suppression op {op.id} : {e}")
+
+        print(f"[OK] Suppression cascade réussie pour opérations {ids_to_delete}")
+        return True
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur suppression opération {operation_id}: {e}")
+        raise
 
 
 
@@ -1244,15 +1668,32 @@ def verifier_cachet_existant(session, musicien_id, date_iso):
 
 
 
+from sqlalchemy import or_, func, not_
+
 def get_tous_musiciens_actifs():
     """
-    Retourne uniquement les musiciens actifs de type 'musicien',
-    triés par prénom puis nom.
+    Musiciens actifs à proposer dans 'Déclarer un cachet'.
+    Inclut type 'musicien' ET 'personne' (legacy), et accepte NULL/vides.
+    Exclut les structures (ASSO7, CB ASSO7, CAISSE ASSO7, TRESO ASSO7).
     """
-    return Musicien.query.filter_by(actif=True, type="musicien").order_by(Musicien.prenom, Musicien.nom).all()
-    
+    structures_noms = {"asso7", "cb asso7", "caisse asso7", "treso asso7"}
 
-    
+    return (
+        Musicien.query
+        .filter(
+            Musicien.actif.is_(True),
+            # exclure les structures par leur nom (sécurité)
+            not_(func.lower(func.trim(Musicien.nom)).in_(structures_noms)),
+            # accepter plusieurs types "humains"
+            or_(
+                Musicien.type.is_(None),
+                func.trim(Musicien.type) == "",
+                func.lower(Musicien.type).in_(["musicien", "personne"])
+            )
+        )
+        .order_by(Musicien.prenom, Musicien.nom)
+        .all()
+    )
 
 
 def get_dernier_cachet_musicien(musicien_id):
