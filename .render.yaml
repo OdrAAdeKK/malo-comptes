@@ -2,10 +2,15 @@ services:
   - type: web
     name: malo-comptes
     env: python
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn App:app"
     region: frankfurt
     plan: free
+    autoDeploy: true
+    buildCommand: "pip install --upgrade pip && pip install -r requirements.txt"
+    startCommand: "gunicorn -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT App:app"
     envVars:
       - key: FLASK_ENV
         value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false  # On l'ajoutera manuellement dans le dashboard Render

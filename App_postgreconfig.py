@@ -312,7 +312,7 @@ def marquer_concert_paye():
 def liste_participations(concert_id):
     concert = Concert.query.get_or_404(concert_id)
     musiciens = Musicien.query.filter(
-        Musicien.actif == True,
+        Musicien.actif.is_(True),
         ~Musicien.nom.ilike('%ASSO7%'),
         ~Musicien.prenom.ilike('%ASSO7%')
     ).order_by(Musicien.nom).all()
@@ -413,7 +413,7 @@ def supprimer_participation(participation_id):
 def operations():
     # 👉 On récupère les musiciens actifs ou liés à ASSO7
     musiciens = Musicien.query.filter(
-        (Musicien.actif == True) |
+        (Musicien.actif.is_(True)) |
         (Musicien.nom.ilike('%ASSO7%')) |
         (Musicien.prenom.ilike('%ASSO7%'))
     ).order_by(Musicien.prenom, Musicien.nom).all()
@@ -539,7 +539,7 @@ def operations_a_venir():
         db.session.query(Operation)
         .filter(
             Operation.date > today,
-            (Operation.auto_cb_asso7.is_(None)) | (Operation.auto_cb_asso7 == False)
+            (Operation.auto_cb_asso7.is_(None)) | (Operation.auto_cb_asso7.is_(False))
         )
         .order_by(Operation.date)
         .all()
@@ -749,7 +749,7 @@ def archives_concerts_saison(saison):
         Concert.date >= debut_saison,
         Concert.date <= fin_saison,
         Concert.date <= date.today(),
-        Concert.paye == True
+        Concert.paye.is True
     ).order_by(Concert.date).all()
 
     # Regroupement par mois pour affichage (si besoin)
@@ -895,7 +895,7 @@ def archives_operations_saison(saison_url):
         or_(
             Musicien.nom != "CB ASSO7",
             Operation.auto_cb_asso7.is_(None),
-            Operation.auto_cb_asso7 == False
+            Operation.auto_cb_asso7.is_(False)
         )
     ).order_by(Operation.date.desc()).all()
 

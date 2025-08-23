@@ -63,7 +63,7 @@ mail = Mail(app)
 print("Base utilisée :", database_url)
 
 # 📁 Modules internes
-from db import db  # depuis db.py si séparé, sinon adapte
+
 from models import Musicien, Concert, Participation, Operation, Cachet, Report
 from mes_utils import (
     partage_benefices_concert, calculer_credit_actuel,
@@ -119,7 +119,7 @@ def accueil():
 def liste_musiciens():
     valeur = request.args.getlist('actifs_uniquement')
     actifs_uniquement = 'on' in valeur or valeur == []  # défaut : coché
-    musiciens = Musicien.query.filter_by(type='musicien')
+    musiciens = Musicien.query.filter(or_(Musicien.type == 'personne', Musicien.type == 'musicien'))
     if actifs_uniquement:
         musiciens = musiciens.filter_by(actif=True)
     musiciens = musiciens.all()
@@ -139,21 +139,35 @@ def liste_musiciens():
 def ajouter_musicien():
     erreur = None
     if request.method == 'POST':
-        prenom = request.form.get('prenom', '').strip()
-        nom = request.form.get('nom', '').strip()
-        actif = bool(request.form.get('actif'))
-        if not prenom or not nom:
-            erreur = "Tous les champs sont obligatoires."
-        else:
-            # Vérifie si le musicien existe déjà par exemple
-            exist = Musicien.query.filter_by(prenom=prenom, nom=nom).first()
+        prenom   = (request.form.get('prenom') or '').strip()
+        nom      = (request.form.get('nom') or '').strip()
+        type_val = (request.form.get('type') or 'personne').strip().lower()
+        actif    = bool(request.form.get('actif'))
+
+        # règles de validation
+        if not nom:
+            erreur = "Le nom est obligatoire."
+        elif type_val not in ('personne', 'structure'):
+            erreur = "Type invalide."
+        elif type_val == 'personne' and not prenom:
+            erreur = "Le prénom est obligatoire pour un musicien de type 'personne'."
+
+        if not erreur:
+            # éviter les doublons (on tient compte du type)
+            exist = Musicien.query.filter_by(nom=nom, prenom=(prenom if type_val != 'structure' else ''), type=type_val).first()
             if exist:
-                erreur = "Ce musicien existe déjà."
+                erreur = "Cet(te) musicien(ne)/structure existe déjà."
             else:
-                m = Musicien(prenom=prenom, nom=nom, actif=actif)
+                m = Musicien(
+                    nom=nom,
+                    prenom=(prenom if type_val != 'structure' else ''),  # prénom vide si structure
+                    type=type_val,
+                    actif=actif
+                )
                 db.session.add(m)
                 db.session.commit()
                 return redirect(url_for('liste_musiciens'))
+
     return render_template('ajouter_musicien.html', erreur=erreur)
 
 
@@ -224,7 +238,7 @@ def ajouter_concert():
 
         # Création du concert
         concert = Concert(
-            date=datetime.strptime(date_str, '%Y-%m-%d'),
+            date=datetime.strptime(date_str, '%Y-%m-%d').date(),
             lieu=lieu,
             paye=paye,
             mode_paiement_prevu=mode_paiement_prevu
@@ -362,8 +376,8 @@ def supprimer_concert(concert_id):
 def concerts_non_payes_view():
     today = date.today()
     concerts = Concert.query.filter(
-        Concert.paye == False,
-        Concert.date <= today  # On limite aux concerts passés
+        Concert.paye.is_(False),
+        Concert.date <= today
     ).order_by(Concert.date.desc()).all()
 
     musiciens = Musicien.query.all()
@@ -505,7 +519,7 @@ def annuler_paiement_concert():
 def liste_participations(concert_id):
     concert = Concert.query.get_or_404(concert_id)
     musiciens = Musicien.query.filter(
-        Musicien.actif == True,
+        Musicien.actif.is_(True),
         ~Musicien.nom.ilike('%ASSO7%'),
         ~Musicien.prenom.ilike('%ASSO7%')
     ).order_by(Musicien.nom).all()
@@ -649,7 +663,7 @@ def operations():
 
     # -------- CHARGEMENT DE LA PAGE (GET) --------
     musiciens = Musicien.query.filter(
-        (Musicien.actif == True) |
+        (Musicien.actif.is_(True)) |
         (Musicien.nom.ilike('%ASSO7%')) |
         (Musicien.prenom.ilike('%ASSO7%'))
     ).order_by(Musicien.prenom, Musicien.nom).all()
@@ -760,7 +774,7 @@ def operations_a_venir():
         db.session.query(Operation)
         .filter(
             Operation.date > today,
-            (Operation.auto_cb_asso7.is_(None)) | (Operation.auto_cb_asso7 == False)
+            or_(Operation.auto_cb_asso7.is_(None), Operation.auto_cb_asso7.is_(False))
         )
         .order_by(Operation.date)
         .all()
@@ -969,7 +983,8 @@ def archives_concerts_saison(saison):
         Concert.date >= debut_saison,
         Concert.date <= fin_saison,
         Concert.date <= date.today(),
-        Concert.paye == True
+        Concert.paye.is_(True)
+
     ).order_by(Concert.date).all()
 
     # Regroupement par mois

@@ -36,7 +36,7 @@ def generer_export_excel():
     ws = wb.active
     ws.title = "Comptes"
 
-    musiciens = Musicien.query.filter(Musicien.actif == True, Musicien.type != 'structure').all()
+    musiciens = Musicien.query.filter(Musicien.actif.is_(True), Musicien.type != 'structure').all()
     musiciens.sort(key=lambda m: (m.nom != "ARNOULD" or m.prenom != "Jérôme", m.nom, m.prenom))
 
     structures = Musicien.query.filter(
@@ -98,7 +98,7 @@ def generer_export_excel():
             gains_a_venir = part_pot + total_ops_avenir
             if m.nom not in ["ASSO7"]:
                 concerts_cible = Concert.query.filter(
-                    Concert.paye == False,
+                    Concert.paye.is_(False),
                     Concert.mode_paiement_prevu.ilike(f"%{m.nom}%")
                 ).all()
                 for concert in concerts_cible:
@@ -156,7 +156,7 @@ def generer_export_excel():
                 })
         if m.nom in ["CB ASSO7", "CAISSE ASSO7"]:
             concerts_recettes = Concert.query.filter(
-                Concert.paye == False,
+                Concert.paye.is_(False),
                 Concert.mode_paiement_prevu == m.nom
             ).all()
             for c in concerts_recettes:

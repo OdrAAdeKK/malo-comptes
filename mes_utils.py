@@ -12,6 +12,8 @@ import os
 import re
 import sqlite3
 from datetime import datetime
+from flask import current_app
+
 
 # 📦 Librairies tierces
 import fitz  # PyMuPDF
@@ -84,145 +86,169 @@ from models import Musicien, Operation
 from sqlalchemy import func
 
 
+from sqlalchemy import func  # <-- en haut du fichier si pas déjà présent
+
 def get_etat_comptes():
+    """Construit le tableau pour /comptes (musiciens + structures)."""
     aujourd_hui = date.today()
     tableau = []
 
-    concerts = Concert.query.all()  # nécessaire pour les calculs de crédit actuel
+    # On va réutiliser la même liste de concerts pour calculer les crédits
+    concerts = Concert.query.all()
 
-    # ---------- MUSICIENS ACTIFS ----------
-    musiciens = Musicien.query.filter(Musicien.actif == True, Musicien.type != 'structure').all()
-    musiciens.sort(key=lambda m: (m.nom != "ARNOULD" or m.prenom != "Jérôme", m.nom, m.prenom))
+    # ---------- MUSICIENS (tout ce qui n'est PAS 'structure') ----------
+    musiciens = (
+        Musicien.query
+        .filter(Musicien.actif.is_(True), Musicien.type != 'structure')
+        .order_by(Musicien.nom, Musicien.prenom)
+        .all()
+    )
+
+    def _sum_ops(musicien_id, *, passees=True):
+        """Somme des opérations passées/à venir (credit - debit)."""
+        q = Operation.query.filter(Operation.musicien_id == musicien_id)
+        if passees:
+            q = q.filter(Operation.date <= aujourd_hui)
+        else:
+            q = q.filter(Operation.date > aujourd_hui)
+
+        total = 0.0
+        for op in q.all():
+            op_type = (op.type or "").lower().replace("é", "e")
+            if op_type == "credit":
+                total += op.montant or 0
+            elif op_type == "debit":
+                total -= op.montant or 0
+        return total
 
     for m in musiciens:
-        credit = db.session.query(func.sum(Participation.credit_calcule))\
-            .filter_by(musicien_id=m.id).scalar() or 0
-        report = db.session.query(func.sum(Report.montant))\
-            .filter_by(musicien_id=m.id).scalar() or 0
-        credit += report
+        # Crédit réel = participations réelles + reports + opérations passées
+        credit_reel = (db.session.query(func.sum(Participation.credit_calcule))
+                       .filter_by(musicien_id=m.id)
+                       .scalar() or 0.0)
 
-        ops_passees = db.session.query(Operation).\
-            filter(Operation.musicien_id == m.id, Operation.date <= aujourd_hui).all()
-        total_ops_passees = sum(op.montant if op.type == 'credit' else -op.montant for op in ops_passees)
+        report = (db.session.query(func.sum(Report.montant))
+                  .filter_by(musicien_id=m.id)
+                  .scalar() or 0.0)
 
-        ops_avenir = db.session.query(Operation).\
-            filter(Operation.musicien_id == m.id, Operation.date > aujourd_hui).all()
-        total_ops_avenir = sum(op.montant if op.type == 'credit' else -op.montant for op in ops_avenir)
+        ops_passees = _sum_ops(m.id, passees=True)
+        credit_reel += report + ops_passees
 
-        gains_a_venir = db.session.query(func.sum(Participation.credit_calcule_potentiel))\
-            .filter_by(musicien_id=m.id).scalar() or 0
-        gains_a_venir += total_ops_avenir
+        # Gains à venir = participations potentielles + opérations à venir
+        gains_potentiels = (db.session.query(func.sum(Participation.credit_calcule_potentiel))
+                            .filter_by(musicien_id=m.id)
+                            .scalar() or 0.0)
+        ops_avenir = _sum_ops(m.id, passees=False)
+        gains_potentiels += ops_avenir
 
         tableau.append({
-            "nom": f"{m.prenom} {m.nom}",
-            "credit": credit + total_ops_passees,
-            "gains_a_venir": gains_a_venir,
-            "credit_potentiel": credit + total_ops_passees + gains_a_venir,
+            "nom": f"{(m.prenom or '').strip()} {(m.nom or '').strip()}".strip(),
+            "credit": credit_reel,
+            "gains_a_venir": gains_potentiels,
+            "credit_potentiel": credit_reel + gains_potentiels,
             "structure": False
         })
 
-
-    # ---------- STRUCTURES ----------
-    structures = Musicien.query.filter(
-        Musicien.type == 'structure',
-        ~Musicien.nom.in_(["CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7"])
-    ).all()
-
+    # ---------- SÉPARATEUR VISUEL ----------
     tableau.append({"separateur": True})
 
+    # ---------- STRUCTURES (hors spéciaux) ----------
+    structures = (
+        Musicien.query
+        .filter(
+            Musicien.type == 'structure',
+            ~Musicien.nom.in_(["CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7"])
+        )
+        .order_by(Musicien.nom)
+        .all()
+    )
+
     for s in structures:
-        gains_a_venir = 0
+        # Crédit actuel coté structure (utilise ta logique existante)
+        credit = calculer_credit_actuel(s, concerts)
 
-        if s.nom == "ASSO7":
-            credit = calculer_credit_actuel(s, concerts)
-            report = db.session.query(func.sum(Report.montant))\
-                .filter_by(musicien_id=s.id).scalar() or 0
-            credit += report
+        # Report associé à la structure
+        report_s = (db.session.query(func.sum(Report.montant))
+                    .filter_by(musicien_id=s.id)
+                    .scalar() or 0.0)
+        credit += report_s
 
-            part_pot = db.session.query(func.sum(Participation.credit_calcule_potentiel))\
-                .filter_by(musicien_id=s.id).scalar() or 0
-            gains_a_venir += part_pot
-        else:
-            ops_passees = db.session.query(Operation).\
-                filter(Operation.musicien_id == s.id, Operation.date <= aujourd_hui).all()
-            total_ops_passees = sum(op.montant if op.type == 'crédit' else -op.montant for op in ops_passees)
-            credit = total_ops_passees or 0
-
-            report = db.session.query(func.sum(Report.montant))\
-                .filter_by(musicien_id=s.id).scalar() or 0
-            credit += report
-
-            ops_avenir = db.session.query(Operation).\
-                filter(Operation.musicien_id == s.id, Operation.date > aujourd_hui).all()
-            total_ops_avenir = sum(op.montant if op.type == 'crédit' else -op.montant for op in ops_avenir)
-            gains_a_venir += total_ops_avenir
+        # Gains à venir = participations potentielles + opérations à venir
+        gains_a_venir = (db.session.query(func.sum(Participation.credit_calcule_potentiel))
+                         .filter_by(musicien_id=s.id)
+                         .scalar() or 0.0)
+        gains_a_venir += _sum_ops(s.id, passees=False)
 
         tableau.append({
-            "nom": s.nom,
+            "nom": (s.nom or "").strip(),
             "credit": credit,
             "gains_a_venir": gains_a_venir,
             "credit_potentiel": credit + gains_a_venir,
             "structure": True
         })
 
-    # ---------- STRUCTURES SPÉCIALES : CB, CAISSE, TRESO ----------
+    # ---------- STRUCTURES SPÉCIALES ----------
     cb_asso7 = Musicien.query.filter_by(nom="CB ASSO7").first()
     caisse_asso7 = Musicien.query.filter_by(nom="CAISSE ASSO7").first()
 
     # --- CB ASSO7 ---
-    credit_cb = calculer_credit_actuel(cb_asso7, concerts)
-    report_cb = db.session.query(func.sum(Report.montant))\
-        .filter_by(musicien_id=cb_asso7.id).scalar() or 0
-    credit_cb += report_cb
+    if cb_asso7:
+        credit_cb = calculer_credit_actuel(cb_asso7, concerts)
+        report_cb = (db.session.query(func.sum(Report.montant))
+                     .filter_by(musicien_id=cb_asso7.id)
+                     .scalar() or 0.0)
+        credit_cb += report_cb
 
-    recettes_a_venir_cb = db.session.query(func.sum(Concert.recette_attendue))\
-        .filter(Concert.paye == False, Concert.mode_paiement_prevu == "CB ASSO7").scalar() or 0
-    gains_cb = recettes_a_venir_cb
-    credit_potentiel_cb = credit_cb + gains_cb
-
-    tableau.append({
-        "nom": "CB ASSO7",
-        "credit": credit_cb,
-        "gains_a_venir": gains_cb,
-        "credit_potentiel": credit_potentiel_cb,
-        "structure": True
-    })
+        recettes_a_venir_cb = (db.session.query(func.sum(Concert.recette_attendue))
+                               .filter(Concert.paye.is_(False),
+                                       Concert.mode_paiement_prevu == "CB ASSO7")
+                               .scalar() or 0.0)
+        tableau.append({
+            "nom": "CB ASSO7",
+            "credit": credit_cb,
+            "gains_a_venir": recettes_a_venir_cb,
+            "credit_potentiel": credit_cb + recettes_a_venir_cb,
+            "structure": True
+        })
 
     # --- CAISSE ASSO7 ---
-    credit_caisse = calculer_credit_actuel(caisse_asso7, concerts)
-    report_caisse = db.session.query(func.sum(Report.montant))\
-        .filter_by(musicien_id=caisse_asso7.id).scalar() or 0
-    credit_caisse += report_caisse
+    if caisse_asso7:
+        credit_caisse = calculer_credit_actuel(caisse_asso7, concerts)
+        report_caisse = (db.session.query(func.sum(Report.montant))
+                         .filter_by(musicien_id=caisse_asso7.id)
+                         .scalar() or 0.0)
+        credit_caisse += report_caisse
 
-    recettes_a_venir_caisse = db.session.query(func.sum(Concert.recette_attendue))\
-        .filter(Concert.paye == False, Concert.mode_paiement_prevu == "CAISSE ASSO7").scalar() or 0
-    gains_caisse = recettes_a_venir_caisse
-    credit_potentiel_caisse = credit_caisse + gains_caisse
+        recettes_a_venir_caisse = (db.session.query(func.sum(Concert.recette_attendue))
+                                   .filter(Concert.paye.is_(False),
+                                           Concert.mode_paiement_prevu == "CAISSE ASSO7")
+                                   .scalar() or 0.0)
+        tableau.append({
+            "nom": "CAISSE ASSO7",
+            "credit": credit_caisse,
+            "gains_a_venir": recettes_a_venir_caisse,
+            "credit_potentiel": credit_caisse + recettes_a_venir_caisse,
+            "structure": True
+        })
 
-    tableau.append({
-        "nom": "CAISSE ASSO7",
-        "credit": credit_caisse,
-        "gains_a_venir": gains_caisse,
-        "credit_potentiel": credit_potentiel_caisse,
-        "structure": True
-    })
+    # --- TRESO ASSO7 = CB + CAISSE ---
+    if cb_asso7 or caisse_asso7:
+        # Recalcule à partir des lignes qu’on vient de pousser
+        cb_row = next((r for r in tableau if r.get("nom") == "CB ASSO7"), None)
+        caisse_row = next((r for r in tableau if r.get("nom") == "CAISSE ASSO7"), None)
 
-    # --- TRESO ASSO7 ---
-    treso_credit = credit_cb + credit_caisse
-    treso_gains = gains_cb + gains_caisse
-    treso_potentiel = credit_potentiel_cb + credit_potentiel_caisse
+        treso_credit = (cb_row["credit"] if cb_row else 0.0) + (caisse_row["credit"] if caisse_row else 0.0)
+        treso_gains = (cb_row["gains_a_venir"] if cb_row else 0.0) + (caisse_row["gains_a_venir"] if caisse_row else 0.0)
 
-    tableau.append({
-        "nom": "TRESO ASSO7",
-        "credit": treso_credit,
-        "gains_a_venir": treso_gains,
-        "credit_potentiel": treso_potentiel,
-        "structure": True
-    })
+        tableau.append({
+            "nom": "TRESO ASSO7",
+            "credit": treso_credit,
+            "gains_a_venir": treso_gains,
+            "credit_potentiel": treso_credit + treso_gains,
+            "structure": True
+        })
 
     return tableau
-
-
 
 
 
@@ -231,10 +257,16 @@ def get_musiciens_dict():
     return {m.id: m for m in Musicien.query.all()}
 
 def calculer_credit_actuel(musicien, concerts):
+    if musicien is None:
+        # Cas où l'ID ou l'objet musicien est introuvable → on renvoie 0
+        # ou on pourrait logger un avertissement si besoin
+        return 0.0
+
     aujourd_hui = date.today()
     credit = 0.0
 
     nom = (musicien.nom or "").strip().upper()
+
     # Cas spéciaux : CAISSE ASSO7, TRESO ASSO7
     if nom in ["CAISSE ASSO7", "CB ASSO7", "TRESO ASSO7"]:
         operations = Operation.query.filter_by(musicien_id=musicien.id).all()
@@ -248,7 +280,7 @@ def calculer_credit_actuel(musicien, concerts):
 
     # Pour tous les autres musiciens/structures classiques
     for concert in concerts:
-        # CREDIT ACTUEL : on ne prend QUE les concerts payés ET dont la date est passée ou aujourd'hui
+        # CREDIT ACTUEL : on ne prend QUE les concerts payés ET dont la date est passée ou aujourd'hui
         if concert.paye and concert.date <= aujourd_hui:
             credits, credit_asso7, _ = partage_benefices_concert(concert)
             if nom == "ASSO7":
@@ -270,6 +302,7 @@ def calculer_credit_actuel(musicien, concerts):
             elif op_type == "credit":
                 if not getattr(op, "auto_cb_asso7", False):
                     credit += op.montant or 0
+
     return credit
 
 

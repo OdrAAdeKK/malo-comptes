@@ -3,35 +3,82 @@
 {% block title %}Ajouter un musicien{% endblock %}
 
 {% block content %}
-
-
 <div class="container" style="max-width: 420px; margin: 0 auto; margin-top: 40px;">
-    <h1 style="text-align:center;">Ajouter un musicien</h1>
+  <h1 style="text-align:center;">Ajouter un musicien</h1>
 
-    {% if erreur %}
-      <div style="color:#b71c1c; background:#fbe7e7; border-radius:5px; padding:10px 15px; margin-bottom:20px; text-align:center;">
-        {{ erreur }}
-      </div>
-    {% endif %}
+  {% if erreur %}
+    <div style="color:#b71c1c; background:#fbe7e7; border-radius:5px; padding:10px 15px; margin-bottom:20px; text-align:center;">
+      {{ erreur }}
+    </div>
+  {% endif %}
 
-    <form method="POST" autocomplete="off">
-        <label for="prenom" style="font-weight: bold; margin-bottom: 7px; display: block;">Prénom</label>
-        <input type="text" id="prenom" name="prenom" value="{{ request.form.prenom or '' }}" required
-               style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;">
+  <form method="POST" autocomplete="off">
+    <!-- Prénom -->
+    <label for="prenom" style="font-weight: bold; margin-bottom: 7px; display: block;">Prénom</label>
+    <input
+      type="text"
+      id="prenom"
+      name="prenom"
+      value="{{ request.form.prenom or '' }}"
+      required
+      style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;"
+    >
 
-        <label for="nom" style="font-weight: bold; margin-bottom: 7px; display: block;">Nom</label>
-        <input type="text" id="nom" name="nom" value="{{ request.form.nom or '' }}" required
-               style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;">
+    <!-- Nom -->
+    <label for="nom" style="font-weight: bold; margin-bottom: 7px; display: block;">Nom</label>
+    <input
+      type="text"
+      id="nom"
+      name="nom"
+      value="{{ request.form.nom or '' }}"
+      required
+      style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;"
+    >
 
-        <label style="font-weight: normal; display:block; margin-bottom: 20px;">
-            <input type="checkbox" name="actif" {% if request.form.get('actif', True) %}checked{% endif %}>
-            Actif
-        </label>
+    <!-- Type (nouveau) -->
+    <label for="type" style="font-weight: bold; margin-bottom: 7px; display: block;">Type</label>
+    <select
+      id="type"
+      name="type"
+      required
+      style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;"
+    >
+      {% set type_val = (request.form.get('type') or 'personne')|lower %}
+      <option value="personne" {% if type_val == 'personne' %}selected{% endif %}>Personne</option>
+      <option value="structure" {% if type_val == 'structure' %}selected{% endif %}>Structure</option>
+    </select>
 
-<div class="button-row">
-  <button type="submit" class="valider-button">Valider</button>
-  <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+    <!-- Actif -->
+    <label style="font-weight: normal; display:block; margin-bottom: 20px;">
+      <input type="checkbox" name="actif" {% if request.form.get('actif', True) %}checked{% endif %}>
+      Actif
+    </label>
+
+    <div class="button-row">
+      <button type="submit" class="valider-button">Valider</button>
+      <a href="#"
+         onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }"
+         class="retour-button">⬅ Retour</a>
+    </div>
+  </form>
 </div>
-    </form>
-</div>
+
+<!-- Script: si 'Structure' alors le prénom est désactivé et non requis -->
+<script>
+(function () {
+  var typeEl = document.getElementById('type');
+  var prenomEl = document.getElementById('prenom');
+
+  function togglePrenom() {
+    var isStructure = (typeEl.value || '').toLowerCase() === 'structure';
+    prenomEl.disabled = isStructure;
+    prenomEl.required = !isStructure;
+    if (isStructure) prenomEl.value = '';
+  }
+  if (typeEl && prenomEl) {
+    typeEl.addEventListener('change', togglePrenom);
+    togglePrenom(); // état initial basé sur la valeur postée
+  }
+})();
+</script>
 {% endblock %}
