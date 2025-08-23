@@ -12,12 +12,14 @@ env/
 instance/
 .env
 .env.*
-*.dump
+env.txt          # Contient les variables d'environnement
+test_db.py       # Script local uniquement
 
-# OS/IDE
+# OS / IDE
 .DS_Store
 .idea/
 .vscode/
+
 # Fichiers générés / temporaires
 exports/
 static/exports/
