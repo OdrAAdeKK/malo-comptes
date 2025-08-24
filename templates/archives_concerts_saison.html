@@ -1,22 +1,81 @@
 {% extends 'base.html' %}
-
 {% block title %}Concerts archivés - Saison {{ saison }}{% endblock %}
 {% block body_class %}big-mode{% endblock %}
 
 {% block content %}
+<div class="container" style="margin-top:24px;">
+  <h1>Concerts archivés — Saison {{ saison }}</h1>
 
-<div class="container">
-    <h1>Concerts archivés - Saison {{ saison }}</h1>
-    {% include "_concerts_table.html" %}
-	<div class="button-row">
-		<a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-		<a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-		<a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
-		<a href="{{ url_for('concerts_non_payes_view') }}" class="	nonpayes-button">Non payés</a>
-		<a href="{{ url_for('liste_concerts') }}" class="a-venir-button">À venir</a>  <!-- ⬅ Nouveau bouton -->
-	</div>
+  {% if groupes %}
+    {% for key, bloc in groupes.items() %}
+      <h2 class="mois-bandeau">{{ bloc.label }}</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Lieu</th>
+            <th>Recette</th>
+            <th>Frais</th>
+            <th>Payé</th>
+            <th>Participants / Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for concert in bloc["items"] %}
+            <tr>
+              <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
+              <td>{{ concert.lieu }}</td>
+              <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
+              <td>{{ concert.frais | format_currency if concert.frais is not none else '' }}</td>
+              <td style="text-align:center;">
+                <input type="checkbox" {% if concert.paye %}checked{% endif %} {% if readonly_checkboxes %}disabled{% endif %}>
+              </td>
+              <td>
+                {% if credits_musiciens.get(concert.id) %}
+                  <div class="credits" style="font-size:0.95em; margin-bottom:8px;">
+                    <strong>Participants&nbsp;:</strong>
+                    <ul style="margin:6px 0 4px 16px; padding-left:0;">
+                      {% for mid, credit in credits_musiciens[concert.id].items() %}
+                        {% set m = musiciens_dict[mid] %}
+                        <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
+                      {% endfor %}
+                      <li style="font-weight:600; color:#673ab7;">
+                        ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
+                      </li>
+                    </ul>
+                  </div>
+                {% endif %}
+
+                <div class="actions">
+                  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
+                  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  {% else %}
+    <p>Aucun concert archivé pour cette saison.</p>
+  {% endif %}
+
+  <div class="button-row-concerts">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+    <a href="{{ url_for('archives_concerts') }}" class="archives-button">← Saisons</a>
+  </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
-
+<style>
+  .container { background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1); max-width:1200px; }
+  .mois-bandeau { background:#fde7e7; padding:10px 14px; border-radius:8px; margin:24px 0 8px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { padding:10px; border-bottom:1px solid #ddd; text-align:left; }
+  th { background:#4285f4; color:white; }
+  tr:hover { background:#f9fafb; }
+  .actions a { margin-right:6px; text-decoration:none; }
+  .edit-button { background:#f9a825; color:#fff; padding:6px 10px; border-radius:5px; }
+  .participation-button { background:#4285f4; color:#fff; padding:6px 10px; border-radius:5px; }
+</style>
 {% endblock %}

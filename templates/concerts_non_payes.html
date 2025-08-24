@@ -6,80 +6,131 @@
 {% block content %}
 <div class="container" style="margin-top:24px;">
   <h1>Concerts non payés</h1>
-  {% if concerts %}
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Lieu</th>
-          <th>Recette</th>
-          <th>Frais</th>
-          <th>Payé</th>
-          <th>Participants</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for concert in concerts %}
-          <tr>
-            <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
-            <td>{{ concert.lieu }}</td>
-            <td>
-			  {% if concert.recette_attendue is not none %}
-				<span style="color:#999;"><em>{{ concert.recette_attendue | format_currency }}</em></span>
-			  {% else %}
-				—
-			  {% endif %}
-			</td>
-            <td>{{ concert.frais | format_currency if concert.frais is not none else '' }}</td>
-			<td style="text-align:center;">
-			  <input type="checkbox"
-					 class="paye-checkbox"
-					 data-id="{{ concert.id }}"
-					 data-recette-attendue="{{ concert.recette_attendue or '' }}"
-					 {% if concert.paye %}checked{% endif %}>
-			</td>
 
-            <td>
-              {% if credits_musiciens.get(concert.id) %}
-                <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
-                  <strong>Participants&nbsp;:</strong>
-                  <ul style="margin:6px 0 4px 16px; padding-left:0;">
-                    {% for mid, credit in credits_musiciens[concert.id].items() %}
-                      {% set m = musiciens_dict[mid] %}
-                      <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
-                    {% endfor %}
-                    <li style="font-weight:600; color:#673ab7;">
-                      ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
-                    </li>
-                  </ul>
-                </div>
-              {% endif %}
-              <div class="actions">
-                <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
-                <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
-                  <button type="submit" class="delete-button">🗑</button>
-                </form>
-                <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
-              </div>
-            </td>
+  {% if groupes %}
+    {% for key, bloc in groupes.items() %}
+      <h2 class="mois-bandeau">{{ bloc.label }}</h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Lieu</th>
+            <th>Recette</th>
+            <th>Prévision</th>
+            <th>Marquer payé</th>
+            <th>Actions / Détails</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for concert in bloc["items"] %}
+            <tr>
+              <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
+              <td>{{ concert.lieu }}</td>
+              <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
+              <td><span style="color:#888;font-style:italic;">
+                {{ concert.recette_attendue | format_currency if concert.recette_attendue is not none else '' }}
+              </span></td>
+              <td style="text-align:center;">
+                <input type="checkbox"
+                       class="paye-checkbox"
+                       data-id="{{ concert.id }}"
+                       data-recette-attendue="{{ concert.recette_attendue or '' }}">
+              </td>
+              <td>
+                {% if credits_musiciens.get(concert.id) %}
+                  <div class="credits" style="font-size:0.95em; margin-bottom:8px;">
+                    <strong>Participants&nbsp;:</strong>
+                    <ul style="margin:6px 0 4px 16px; padding-left:0;">
+                      {% for mid, credit in credits_musiciens[concert.id].items() %}
+                        {% set m = musiciens_dict[mid] %}
+                        <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
+                      {% endfor %}
+                      <li style="font-weight:600; color:#673ab7;">
+                        ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
+                      </li>
+                    </ul>
+                  </div>
+                {% endif %}
+
+                <div class="actions">
+                  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
+                  <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
+                    <button type="submit" class="delete-button">🗑</button>
+                  </form>
+                  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
   {% else %}
     <p>Aucun concert non payé.</p>
   {% endif %}
+
   <div class="button-row-concerts">
-    <a href="{{ url_for('accueil') }}" class="back-button-concerts">Accueil</a>
-    <a href="{{ url_for('archives_concerts') }}" class="archive-button-concerts">Archives</a>
-    <a href="{{ url_for('liste_concerts') }}" class="a-venir-button">A venir</a>
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+    <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+    <a href="{{ url_for('archives_concerts') }}" class="archives-button">Archives</a>
     <a href="{{ url_for('ajouter_concert') }}" class="add-button">+ Ajouter un concert</a>
   </div>
 </div>
 
 {% include "_popup_paiement.html" %}
-
-
-
 <script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
+<script>
+document.querySelectorAll('.paye-checkbox').forEach(function(box) {
+  box.addEventListener('change', function() {
+    const concertId = this.dataset.id;
+    if (this.checked) {
+      showPopupPaiement(concertId, function(compte) {
+        if (!compte) { box.checked = false; return; }
+        fetch("/valider_paiement_concert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ concert_id: concertId, compte: compte })
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) location.reload();
+          else { alert("Erreur : " + (data.message || "inconnue")); box.checked = false; }
+        });
+      });
+    } else {
+      if (!confirm("Annuler la validation du paiement pour ce concert ?")) {
+        this.checked = true; return;
+      }
+      fetch("/annuler_paiement_concert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ concert_id: concertId })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) location.reload();
+        else { alert("Erreur : " + (data.message || "inconnue")); this.checked = true; }
+      });
+    }
+  });
+});
+</script>
+
+<style>
+.mois-bandeau{
+  margin:22px 0 6px; padding:10px 14px; background:#ffe6e6;
+  border-radius:8px; font-weight:700; font-size:18px;
+}
+table { width:100%; border-collapse:collapse; }
+th, td { padding:10px; border-bottom:1px solid #ddd; }
+th { background-color:#4285f4; color:white; }
+.actions{ display:flex; gap:6px; }
+.edit-button,.delete-button,.participation-button{
+  padding:6px 10px; border-radius:5px; text-decoration:none; font-size:.9em; border:none; cursor:pointer;
+}
+.edit-button{ background:#f9a825; color:#fff; } .edit-button:hover{ background:#f57f17; }
+.delete-button{ background:#d32f2f; color:#fff; } .delete-button:hover{ background:#b71c1c; }
+.participation-button{ background:#4285f4; color:#fff; } .participation-button:hover{ background:#3367d6; }
+</style>
 {% endblock %}

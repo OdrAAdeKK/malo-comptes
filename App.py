@@ -85,8 +85,7 @@ from mes_utils import (
     musicien_to_dict, get_tous_musiciens_actifs, verifier_ou_creer_structures,
     ajouter_cachets, formulaire_to_data, enregistrer_operation_en_db,
     valider_concert_par_operation, concert_to_dict, get_debut_fin_saison,
-    get_ordered_comptes_bis, get_reports_dict, extraire_infos_depuis_pdf,
-    mois_fr, regrouper_cachets_par_mois, basculer_statut_paiement_concert,
+    get_ordered_comptes_bis, get_reports_dict, extraire_infos_depuis_pdf, regrouper_cachets_par_mois,
 )
 
 COULEURS_MOIS = {
@@ -141,123 +140,41 @@ def liste_musiciens():
 
 
 
-from sqlalchemy import func, or_, not_
-
 # Créer/ajouter
 @app.route('/ajouter_musicien', methods=['GET', 'POST'])
 def ajouter_musicien():
     erreur = None
-    # pour re-remplir le formulaire en cas d'erreur
-    form_vals = {
-        "prenom": (request.form.get('prenom') or '').strip(),
-        "nom": (request.form.get('nom') or '').strip(),
-        "type": (request.form.get('type') or '').strip(),
-        "actif": request.form.get('actif')
-    }
-
     if request.method == 'POST':
-        prenom_raw = (request.form.get('prenom') or '').strip()
-        nom_raw    = (request.form.get('nom') or '').strip()
-        type_raw   = (request.form.get('type') or '').strip().lower()
-        actif_raw  = (request.form.get('actif') or '').strip().lower()
-        actif      = actif_raw in ('on', 'true', '1', 'yes')
+        prenom   = (request.form.get('prenom') or '').strip()
+        nom      = (request.form.get('nom') or '').strip()
+        type_val = (request.form.get('type') or 'personne').strip().lower()
+        actif    = bool(request.form.get('actif'))
 
-        # --- Normalisations ---
-        # mappe l'ancien "personne" vers "musicien"
-        mapping_type = {
-            "personne": "musicien",
-            "musicien": "musicien",
-            "musiciens": "musicien",
-            "structure": "structure",
-            "structures": "structure",
-            "asso": "structure",
-            "association": "structure",
-        }
-        type_val = mapping_type.get(type_raw, type_raw)
-
-        # nettoyage basique
-        def _clean(s):
-            return " ".join((s or "").replace("\xa0", " ").split())
-
-        prenom = _clean(prenom_raw)
-        nom    = _clean(nom_raw)
-
-        # Mise en forme d'affichage
-        def _fmt_nom_personne(n):
-            # NOM en majuscules
-            return (n or "").upper()
-
-        def _fmt_prenom(p):
-            # Jérôme → Jérôme (title-case simple)
-            return p.capitalize() if p else ""
-
-        def _fmt_nom_structure(n):
-            # Structures en MAJ (ASSO7, CB ASSO7…)
-            return (n or "").upper()
-
-        # --- Règles de validation ---
+        # règles de validation
         if not nom:
             erreur = "Le nom est obligatoire."
-        elif type_val not in ('musicien', 'structure'):
-            erreur = "Type invalide. Choisissez 'musicien' ou 'structure'."
-        elif type_val == 'musicien' and not prenom:
-            erreur = "Le prénom est obligatoire pour un musicien."
+        elif type_val not in ('personne', 'structure'):
+            erreur = "Type invalide."
+        elif type_val == 'personne' and not prenom:
+            erreur = "Le prénom est obligatoire pour un musicien de type 'personne'."
 
-        # --- Vérifs doublons + insertion ---
         if not erreur:
-            if type_val == 'musicien':
-                nom_fmt = _fmt_nom_personne(nom)
-                prenom_fmt = _fmt_prenom(prenom)
-
-                # doublon insensible à la casse/espaces
-                exist = (
-                    Musicien.query
-                    .filter(
-                        func.lower(func.trim(Musicien.nom)) == nom.lower(),
-                        func.lower(func.trim(Musicien.prenom)) == prenom.lower()
-                    )
-                    .first()
+            # éviter les doublons (on tient compte du type)
+            exist = Musicien.query.filter_by(nom=nom, prenom=(prenom if type_val != 'structure' else ''), type=type_val).first()
+            if exist:
+                erreur = "Cet(te) musicien(ne)/structure existe déjà."
+            else:
+                m = Musicien(
+                    nom=nom,
+                    prenom=(prenom if type_val != 'structure' else ''),  # prénom vide si structure
+                    type=type_val,
+                    actif=actif
                 )
-                if exist:
-                    erreur = "Ce musicien existe déjà."
-                else:
-                    m = Musicien(
-                        nom=nom_fmt,
-                        prenom=prenom_fmt,
-                        type='musicien',
-                        actif=actif
-                    )
-                    db.session.add(m)
-                    db.session.commit()
-                    return redirect(url_for('liste_musiciens'))
+                db.session.add(m)
+                db.session.commit()
+                return redirect(url_for('liste_musiciens'))
 
-            else:  # structure
-                nom_fmt = _fmt_nom_structure(nom)
-                # prenom forcé vide pour structure
-                exist = (
-                    Musicien.query
-                    .filter(
-                        func.lower(func.trim(Musicien.nom)) == nom.lower(),
-                        or_(Musicien.prenom.is_(None), func.trim(Musicien.prenom) == "")
-                    )
-                    .first()
-                )
-                if exist:
-                    erreur = "Cette structure existe déjà."
-                else:
-                    m = Musicien(
-                        nom=nom_fmt,
-                        prenom="",
-                        type='structure',
-                        actif=actif
-                    )
-                    db.session.add(m)
-                    db.session.commit()
-                    return redirect(url_for('liste_musiciens'))
-
-    # GET ou POST avec erreur → on réaffiche le formulaire avec le message
-    return render_template('ajouter_musicien.html', erreur=erreur, **form_vals)
-
+    return render_template('ajouter_musicien.html', erreur=erreur)
 
 
 # Mettre à jour/modifier
@@ -292,25 +209,42 @@ def supprimer_musicien(musicien_id):
 # Lire/lister
 
 
+from sqlalchemy import func  # en haut si pas déjà importé
+from mes_utils import grouper_par_mois, get_credits_concerts_from_db
+
 @app.route('/concerts')
 def liste_concerts():
-    today = date.today()
-    concerts = Concert.query.filter(Concert.date >= today).order_by(Concert.date).all()
+    # 🔁 Laisse la base comparer à CURRENT_DATE (évite décalages/locale)
+    concerts = (
+        Concert.query
+        .filter(Concert.date >= func.current_date())
+        .order_by(Concert.date.asc())
+        .all()
+    )
 
     musiciens = Musicien.query.all()
     musiciens_dict = {m.id: m for m in musiciens}
 
-    from mes_utils import get_credits_concerts_from_db
     credits_musiciens, credits_asso7, credits_jerome = get_credits_concerts_from_db(concerts)
+
+    # Regroupement par mois pour le template
+    groupes = grouper_par_mois(concerts, "date")
+
+    # (optionnel) petit log de diag :
+    try:
+        app.logger.info(f"[concerts] {len(concerts)} à venir – ids/dates: " +
+                        ", ".join(f"{c.id}:{c.date}" for c in concerts))
+    except Exception:
+        pass
 
     return render_template(
         'concerts.html',
-        concerts=concerts,
+        concerts=concerts,          # encore envoyé si ton template l’utilise
+        groupes=groupes,            # ← à utiliser pour l’affichage par mois
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
         musiciens_dict=musiciens_dict
     )
-
 
 
 
@@ -461,23 +395,32 @@ def supprimer_concert(concert_id):
         return redirect(url_for('liste_concerts'))
 
 
+from sqlalchemy import func
+from mes_utils import grouper_par_mois, get_credits_concerts_from_db
+
 @app.route('/concerts_non_payes')
 def concerts_non_payes_view():
-    today = date.today()
-    concerts = Concert.query.filter(
-        Concert.paye.is_(False),
-        Concert.date <= today
-    ).order_by(Concert.date.desc()).all()
+    # passés et non payés
+    concerts = (
+        Concert.query
+        .filter(
+            Concert.paye.is_(False),
+            Concert.date <= func.current_date()
+        )
+        .order_by(Concert.date.asc())
+        .all()
+    )
 
     musiciens = Musicien.query.all()
     musiciens_dict = {m.id: m for m in musiciens}
 
-    from mes_utils import get_credits_concerts_from_db
     credits_musiciens, credits_asso7, credits_jerome = get_credits_concerts_from_db(concerts)
 
+    groupes = grouper_par_mois(concerts, "date")   # ← clé
+
     return render_template(
-        'concerts_non_payes.html',
-        concerts=concerts,
+        "concerts_non_payes.html",
+        groupes=groupes,
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
         musiciens_dict=musiciens_dict
@@ -494,72 +437,122 @@ def toggle_concert_paye(concert_id):
     if not concert:
         return "Concert non trouvé", 404
 
+    # etat_cible = True  -> on passe en PAYÉ
+    # etat_cible = False -> on repasse en NON PAYÉ
     etat_cible = not concert.paye
-    try:
-        res = basculer_statut_paiement_concert(concert_id, paye=etat_cible)
-        # même comportement qu'avant côté redirection
-        return redirect(url_for('archives_concerts' if etat_cible else 'liste_concerts'))
-    except Exception as e:
-        print(f"❌ toggle_paye error concert {concert_id}: {e}")
-        return "Erreur serveur", 500
+
+    if etat_cible:
+        # ===== NON PAYÉ -> PAYÉ =====
+        concert.paye = True
+        db.session.commit()
+        db.session.refresh(concert)
+
+        from calcul_participations import mettre_a_jour_credit_calcule_reel_pour_concert
+        print(f"[✓] Recalcul crédit CALCULÉ pour concert payé id={concert.id}")
+        mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
+
+        return redirect(url_for('archives_concerts'))
+
+    else:
+        # ===== PAYÉ -> NON PAYÉ =====
+        try:
+            # 1) Restaurer recette_attendue si absente, depuis la recette réelle
+            if (concert.recette_attendue is None) and (concert.recette is not None):
+                try:
+                    concert.recette_attendue = float(concert.recette) or 0.0
+                except Exception:
+                    concert.recette_attendue = 0.0
+
+            # 2) Supprimer l'opération 'Recette concert' liée (quoi qu'il arrive)
+            from mes_utils import supprimer_recette_concert_pour_concert
+            nb_suppr = supprimer_recette_concert_pour_concert(concert.id)
+            print(f"[INFO] toggle_paye: {nb_suppr} 'Recette concert' supprimée(s) pour concert_id={concert.id}")
+
+            # 3) Réinitialiser l'état "non payé"
+            concert.recette = None
+            concert.paye = False
+
+            db.session.commit()
+            db.session.refresh(concert)
+
+            # 4) Recalcul : crédit POTENTIEL
+            from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+            print(f"[✓] Recalcul crédit POTENTIEL pour concert non payé id={concert.id}")
+            mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
+
+            return redirect(url_for('liste_concerts'))
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Erreur lors du passage PAYÉ -> NON PAYÉ pour concert {concert.id}: {e}")
+            return "Erreur serveur", 500
 
 
 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
 
 @app.route("/valider_paiement_concert", methods=["POST"])
 def valider_paiement_concert():
-    # import ici pour éviter les import cycles et s'assurer que la dernière version est utilisée
-    from mes_utils import basculer_statut_paiement_concert
+    from mes_utils import creer_recette_concert_si_absente
+    from calcul_participations import mettre_a_jour_credit_calcule_reel_pour_concert
 
-    data_json = request.get_json(silent=True) or {}
-    data_form = request.form.to_dict() if request.form else {}
-    data = {**data_form, **data_json}
-
-    try:
-        app.logger.info(f"[valider_paiement_concert] Payload reçu: {data}")
-    except Exception:
-        print(f"[valider_paiement_concert] Payload reçu: {data}")
-
-    def _to_int(x):
-        try:
-            return int(str(x).strip())
-        except Exception:
-            return None
-
-    def _to_float(x):
-        if x is None:
-            return None
-        s = str(x).strip().replace(",", ".")
-        if not s:
-            return None
-        try:
-            return float(s)
-        except Exception:
-            return None
-
-    concert_id = _to_int(data.get("concert_id") or data.get("concertId"))
-    if concert_id is None:
-        return jsonify(success=False, message="concert_id manquant ou invalide"), 422
-
-    compte = (data.get("compte") or "").strip()
-    recette_val = _to_float(data.get("recette"))
+    data = request.get_json(silent=True) or {}
+    concert_id = data.get("concert_id")
+    compte = (data.get("compte") or "").strip()  # "Compte" / "Espèces" (ou vide)
+    recette_raw = data.get("recette")            # peut être str avec virgule
 
     concert = Concert.query.get(concert_id)
     if not concert:
-        return jsonify(success=False, message=f"Concert introuvable (id={concert_id})"), 404
+        return jsonify(success=False, message="Concert introuvable"), 404
 
     try:
-        res = basculer_statut_paiement_concert(
-            concert_id=concert_id,
-            paye=True,
-            montant=recette_val,   # None => prendra recette_attendue
-            mode=compte            # "CB ASSO7" / "CAISSE ASSO7" / "Compte" / "Espèces"
-        )
-        return jsonify(success=True, **res)
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify(success=False, message=f"Erreur: {e}"), 500
+        # 1) Déterminer la recette finale (priorité au POST, sinon à la prévision)
+        def _to_float(x):
+            if x is None:
+                return None
+            s = str(x).strip().replace(",", ".")
+            return float(s) if s else None
 
+        recette_post = _to_float(recette_raw)
+        if recette_post is not None:
+            concert.recette = recette_post
+        elif concert.recette_attendue is not None:
+            concert.recette = float(concert.recette_attendue)
+        else:
+            concert.recette = float(concert.recette or 0.0)
+
+        # 2) Marquer payé + nettoyer la prévision
+        concert.paye = True
+        concert.recette_attendue = None
+
+        # 3) Déterminer le mode de paiement final
+        #    - priorité à "compte" transmis par le front
+        #    - sinon, fallback au champ du concert s'il existe
+        mode_final = (compte or getattr(concert, "mode_paiement_prevu", "") or "Compte").strip()
+
+        # 4) Créer l'opération "Recette concert" si absente (idempotent)
+        creer_recette_concert_si_absente(
+            concert_id=concert.id,
+            montant=concert.recette,
+            date_op=None,   # prendra la date du concert (ou today si non dispo)
+            mode=mode_final
+        )
+
+        # 5) Commit des changements (concert + éventuelle op créée/mise à jour)
+        db.session.commit()
+
+        # 6) Recalculs alignés "concert payé" (crédit RÉEL)
+        try:
+            db.session.expire_all()
+            mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
+            db.session.commit()
+        except Exception as e:
+            # On log, mais on ne bloque pas la réponse au front si la création op a réussi
+            print(f"⚠️ Recalcul crédit réel échoué pour concert {concert.id} : {e}")
+
+        return jsonify(success=True)
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(success=False, message=str(e)), 400
 
 
 
@@ -567,13 +560,40 @@ from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_co
 
 @app.route("/annuler_paiement_concert", methods=["POST"])
 def annuler_paiement_concert():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json()
     concert_id = data.get("concert_id")
+    concert = Concert.query.get(concert_id)
+
+    if not concert:
+        return jsonify(success=False, message="Concert introuvable.")
+
     try:
-        res = basculer_statut_paiement_concert(int(concert_id), paye=False)
-        return jsonify(success=True, **res)
+        # ➤ Restaurer la recette_attendue
+        if concert.recette and (concert.recette_attendue is None or concert.recette_attendue == 0):
+            concert.recette_attendue = concert.recette
+
+        # ➤ Supprimer la recette réelle
+        concert.recette = None
+
+        # ➤ Marquer comme non payé
+        concert.paye = False
+
+        # ➤ Supprimer l’opération liée de recette
+        op_recette = next((op for op in concert.operations if op.nature == "Recette concert"), None)
+        if op_recette:
+            db.session.delete(op_recette)
+            print(f"[−] Opération recette supprimée (id={op_recette.id})")
+
+        # ➤ Réinitialisation + recalcul participations
+        mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
+
+        db.session.commit()
+        print(f"[✓] Paiement annulé pour concert id={concert.id}")
+        return jsonify(success=True)
+
     except Exception as e:
-        return jsonify(success=False, message=str(e)), 500
+        db.session.rollback()
+        return jsonify(success=False, message=str(e))
 
 
 
@@ -867,6 +887,9 @@ def supprimer_operation():
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
+from mes_utils import grouper_par_mois
+from sqlalchemy import or_
+from datetime import date
 
 @app.route("/operations_a_venir")
 def operations_a_venir():
@@ -880,7 +903,12 @@ def operations_a_venir():
         .order_by(Operation.date)
         .all()
     )
-    return render_template("operations_a_venir.html", operations=operations)
+
+    # 🔹 Regroupement par mois avec labels FR
+    groupes = grouper_par_mois(operations, "date")
+
+    return render_template("operations_a_venir.html", groupes=groupes)
+
 
 # --------- CRUD CACHETS ---------
     
@@ -1080,25 +1108,27 @@ def archives_concerts_saison(saison):
     debut_saison = date(annee_debut, 9, 1)
     fin_saison = date(annee_fin, 8, 31)
 
-    concerts = Concert.query.filter(
-        Concert.date >= debut_saison,
-        Concert.date <= fin_saison,
-        Concert.date <= date.today(),
-        Concert.paye.is_(True)
+    concerts = (
+        Concert.query.filter(
+            Concert.date >= debut_saison,
+            Concert.date <= fin_saison,
+            Concert.date <= date.today(),
+            Concert.paye.is_(True)
+        )
+        .order_by(Concert.date)
+        .all()
+    )
 
-    ).order_by(Concert.date).all()
+    # ✅ Groupement par mois (ordre chronologique dans la saison)
+    from mes_utils import grouper_par_mois
+    groupes = grouper_par_mois(concerts, "date", descending=False)
 
-    # Regroupement par mois
-    concerts_par_mois = concerts_groupes_par_mois(concerts)
-
-    # Préparation des crédits depuis la DB (sans recalcul)
+    # Préparation des crédits (inchangé)
     credits_musiciens = {}
     credits_asso7 = {}
-
     for concert in concerts:
         credits_musiciens[concert.id] = {}
         credits_asso7[concert.id] = 0.0
-
         for part in concert.participations:
             montant = part.credit_calcule or 0.0
             if part.musicien.nom == "ASSO7":
@@ -1110,14 +1140,13 @@ def archives_concerts_saison(saison):
 
     return render_template(
         "archives_concerts_saison.html",
-        concerts=concerts,
-        concerts_par_mois=concerts_par_mois,
+        saison=saison_affichee,
+        groupes=groupes,                         # 👈 nouveau
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
         musiciens_dict=musiciens_dict,
         format_currency=format_currency,
-        saison=saison_affichee,
-        readonly_checkboxes=False  # ✅ permet de décocher
+        readonly_checkboxes=False  # tu peux garder True si tu veux empêcher la décoche
     )
 
 
@@ -1149,6 +1178,8 @@ except locale.Error:
     print("⚠️ Locale fr_FR.UTF-8 non disponible, fallback sur locale par défaut.")
 
 
+from mes_utils import regrouper_cachets_par_mois  # en haut du fichier si pas déjà importé
+
 @app.route('/archives_cachets/<saison>')
 def archives_cachets_saison(saison):
     try:
@@ -1158,25 +1189,14 @@ def archives_cachets_saison(saison):
     except Exception:
         return "Format de saison invalide", 400
 
-    cachets = Cachet.query.filter(Cachet.date >= date_debut, Cachet.date <= date_fin).all()
+    cachets = Cachet.query.filter(
+        Cachet.date >= date_debut,
+        Cachet.date <= date_fin
+    ).all()
 
-    # Organisation : mois → musicien → [cachets]
-    data = defaultdict(lambda: defaultdict(list))
-    for c in cachets:
-        mois_str = MOIS_FR[c.date.month - 1]
-        print(f"DEBUG Mois brut: {c.date.strftime('%B')} | Après mapping: {mois_str}")
-        data[mois_str][c.musicien].append(c)
+    # ✅ même structure que pour “À venir” : [( 'Septembre', [(musicien, [cachets]), ...] ), ...]
+    cachets_par_mois = regrouper_cachets_par_mois(cachets, ordre_scolaire=True)
 
-
-
-    # Tri des mois dans l’ordre (septembre à août)
-    mois_ordre = ['septembre', 'octobre', 'novembre', 'décembre', 'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août']
-    cachets_par_mois = []
-    for mois in mois_ordre:
-        if mois in data:
-            musiciens = sorted(data[mois].items(), key=lambda x: (x[0].nom.lower(), x[0].prenom.lower()))
-            cachets_par_mois.append((mois.capitalize(), musiciens))
-    # Couleurs par mois (adapté pour fond clair)
     couleurs_mois = {
         'septembre': '#FFE0E0',
         'octobre': '#FFF0C1',
@@ -1198,8 +1218,6 @@ def archives_cachets_saison(saison):
         cachets_par_mois=cachets_par_mois,
         couleurs_mois=couleurs_mois
     )
-
-
 
 
 @app.route("/archives_operations")
@@ -1236,24 +1254,28 @@ def archives_operations_saison(saison_url):
     debut_saison, fin_saison = get_debut_fin_saison(saison)
     print(f"🔍 Début saison : {debut_saison}, Fin saison : {fin_saison}")
 
-    # ➡️ Requête : on enlève TOUT filtre sur les flags "techniques"
-    operations = Operation.query.join(Musicien).filter(
-        Operation.date >= debut_saison,
-        Operation.date <= fin_saison,
-        Operation.date <= date.today()
-    ).order_by(Operation.date.desc()).all()
+    # Opérations passées de la saison (on garde tout, même auto_debit/auto_cb)
+    operations = (
+        Operation.query.join(Musicien)
+        .filter(
+            Operation.date >= debut_saison,
+            Operation.date <= fin_saison,
+            Operation.date <= date.today()
+        )
+        .order_by(Operation.date.desc())
+        .all()
+    )
 
-    # Diagnostic
-    for op in operations:
-        try:
-            print(f"✅ {op.date} - {op.type} - {op.musicien.nom} - {op.montant}")
-        except Exception as e:
-            print(f"⚠️ Problème avec une opération : {op.id} - {e}")
-            print("------ DEBUG ARCHIVES ------")
-            for op in operations:
-                print(op.id, op.date, op.motif, op.type, op.montant, op.auto_cb_asso7, op.auto_debit_salaire)
-            print("----------------------------")
-    return render_template("archives_operations_saison.html", saison=saison, operations=operations)
+    # ✅ Groupement par mois (descendant pour archives)
+    from mes_utils import grouper_par_mois
+    groupes = grouper_par_mois(operations, "date", descending=True)
+
+    return render_template(
+        "archives_operations_saison.html",
+        saison=saison,
+        groupes=groupes,
+    )
+
 
 from mes_utils import get_etat_comptes
 

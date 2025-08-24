@@ -1,3 +1,6 @@
+# === NOTE: mois FR centralisés ===
+# Ce fichier a été harmonisé pour utiliser une UNIQUE source MONTHS_FR
+# et les helpers mois_nom_fr/mois_annee_fr/grouper_par_mois.
 # ─────────────────────────────────────────────
 # 1. 📦 IMPORTS & CONSTANTES
 # ─────────────────────────────────────────────
@@ -40,40 +43,137 @@ def get_reports_dict(musiciens):
     return d
 
 
-def get_all_dates_from_json(path, champ_dates):
-    """
-    Extrait toutes les dates présentes dans un fichier JSON (ex: cachets, opérations, ...).
-    - path : chemin vers le fichier
-    - champ_dates : nom du champ listant les dicts de dates (ex: "details_dates") OU fonction personnalisée à appliquer sur chaque entrée.
-    Retourne une liste de dates (datetime.date)
-    """
+# ─────────────────────────────────────────────
+# 🗓️ Mois FR — Source unique + helpers
+# ─────────────────────────────────────────────
+from collections import OrderedDict, defaultdict
+from datetime import date, datetime
+
+MONTHS_FR = {
+    1: "janvier", 2: "février", 3: "mars", 4: "avril",
+    5: "mai", 6: "juin", 7: "juillet", 8: "août",
+    9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre",
+}
+# Ordre scolaire/septembre→août (utile pour archives cachets)
+MONTH_ORDER_SEP2AUG = [9,10,11,12,1,2,3,4,5,6,7,8]
+
+def _to_date(d):
+    """Accepte date/datetime/ISO 'YYYY-MM-DD' ou 'DD/MM/YYYY' → date | None"""
+    if d is None:
+        return None
+    if isinstance(d, date) and not isinstance(d, datetime):
+        return d
+    if isinstance(d, datetime):
+        return d.date()
+    s = str(d).strip()
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        data = []
+        if "-" in s:   # 'YYYY-MM-DD' (ou datetime ISO)
+            return datetime.fromisoformat(s[:10]).date()
+        if "/" in s:   # 'DD/MM/YYYY'
+            j, m, a = s.split("/")
+            return date(int(a), int(m), int(j))
+    except Exception:
+        pass
+    return None
 
-    dates = []
-    for entry in data:
-        # Si champ_dates est un nom de champ
-        if isinstance(champ_dates, str):
-            # S'adapte au format cachets.json qui a une clé "declaration"
-            details = entry.get("declaration", entry).get(champ_dates, [])
-            for c in details:
-                try:
-                    dte = datetime.strptime(c["date"], "%Y-%m-%d").date()
-                    dates.append(dte)
-                except Exception:
-                    continue
-        # Si champ_dates est une fonction personnalisée
-        elif callable(champ_dates):
-            ds = champ_dates(entry)
-            if isinstance(ds, list):
-                dates.extend(ds)
-            elif ds:
-                dates.append(ds)
-    return dates
+def mois_nom_fr(mois: int, *, capitalize: bool = False) -> str:
+    """1..12 -> 'janvier' (ou 'Janvier' si capitalize=True)"""
+    nom = MONTHS_FR.get(int(mois), "")
+    return nom.capitalize() if (capitalize and nom) else nom
 
+def mois_annee_fr(dt: date | datetime | str, *, capitalize: bool = True) -> str:
+    """Date -> 'Septembre 2025' (ou 'septembre 2025' si capitalize=False)"""
+    d = _to_date(dt)
+    if not d:
+        return "—"
+    nom = MONTHS_FR.get(d.month, "")
+    nom = nom.capitalize() if capitalize else nom
+    return f"{nom} {d.year}"
+
+def grouper_par_mois(items, date_attr: str, *, descending: bool = True):
+    """
+    Regroupe une liste d'objets/dicts par mois (clé 'YYYY-MM').
+    Retourne OrderedDict trié (desc par défaut):
+      { 'YYYY-MM': { 'label': 'Septembre 2025', 'items': [...] }, ... }
+    """
+    buckets = defaultdict(list)
+    for it in items:
+        raw = getattr(it, date_attr, None) if hasattr(it, date_attr) else (it.get(date_attr) if isinstance(it, dict) else None)
+        d = _to_date(raw)
+        if not d:
+            continue
+        key = f"{d.year:04d}-{d.month:02d}"
+        buckets[key].append(it)
+
+    keys = sorted(buckets.keys(), reverse=descending)
+    out = OrderedDict()
+    for k in keys:
+        y, m = k.split("-")
+        d = date(int(y), int(m), 1)
+        out[k] = {"label": mois_annee_fr(d), "items": buckets[k]}
+    return out
+
+
+
+def regrouper_cachets_par_mois(cachets, *, ordre_scolaire: bool = True):
+    """
+    Retourne une liste : [
+        ( 'Septembre', [(musicien_obj, [Cachet,...]), ...] ),
+        ( 'Octobre',   [(musicien_obj, [Cachet,...]), ...] ),
+        ...
+    ]
+    ⚠️ Format 100% compatible avec ton template actuel.
+    """
+
+    # 1) Bucket par mois (nom FR) puis par musicien -> liste de cachets
+    data = defaultdict(lambda: defaultdict(list))
+    for c in cachets:
+        m = getattr(c, "date", None).month if getattr(c, "date", None) else None
+        if not m:
+            continue
+        mois_str = MONTHS_FR.get(m, "")
+        if not mois_str:
+            continue
+        data[mois_str][c.musicien].append(c)
+
+    if not data:
+        return []
+
+    # 2) Trie des mois
+    def mois_index(mois_nom: str) -> int:
+        # mappage "septembre" -> 0, ..., "août" -> 11
+        try:
+            num = next(k for k, v in MONTHS_FR.items() if v == mois_nom)
+        except StopIteration:
+            return 0
+        return MONTH_ORDER_SEP2AUG.index(num) if num in MONTH_ORDER_SEP2AUG else 0
+
+    mois_liste = list(data.keys())
+    if ordre_scolaire:
+        mois_liste.sort(key=mois_index)
+    else:
+        # Tri chronologique classique janvier→décembre
+        mois_liste.sort(key=lambda mn: next((k for k, v in MONTHS_FR.items() if v == mn), 0))
+
+    # 3) Formattage final pour le template
+    out = []
+    for mois_nom in mois_liste:
+        # Trie des musiciens par NOM, puis PRÉNOM
+        musiciens_tries = sorted(
+            data[mois_nom].items(),
+            key=lambda x: ((x[0].nom or "").lower(), (x[0].prenom or "").lower())
+        )
+        out.append((mois_nom.capitalize(), musiciens_tries))
+
+    return out
+
+
+def mois_annee_label_fr(d: date) -> str:
+    """Renvoie 'Septembre 2025' à partir d'une date"""
+    if not d:
+        return "—"
+    mois = MONTHS_FR.get(d.month, "")
+    return f"{mois.capitalize()} {d.year}"
 
 
 # ─────────────────────────────────────────────
@@ -563,7 +663,7 @@ def concerts_groupes_par_mois(concerts):
 
     groupes = {}
     for concert in concerts:
-        mois_label = f"{MOIS_FR[concert.date.month - 1].capitalize()} {concert.date.year}"
+        mois_label = f"{MONTHS_FR[concert.date.month].capitalize()} {concert.date.year}"
         if mois_label not in groupes:
             groupes[mois_label] = []
         groupes[mois_label].append(concert)
@@ -571,7 +671,7 @@ def concerts_groupes_par_mois(concerts):
     # Trie par année, puis par mois
     def mois_key(label):
         nom_mois, annee = label.split()
-        mois_num = MOIS_FR.index(nom_mois.lower()) + 1
+        mois_num = list(MONTHS_FR.values()).index(nom_mois.lower())+1
         return (int(annee), mois_num)
     groupes_tries = OrderedDict(
         sorted(groupes.items(), key=lambda x: mois_key(x[0]))
@@ -1535,11 +1635,6 @@ def saisons_from_dates(dt):
         return f"{dt.year}-{dt.year+1}"
 
 
-MOIS_FR = [
-    "janvier", "février", "mars", "avril", "mai", "juin",
-    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
-]
-
     
 def saison_from_date(dt):
     """
@@ -1871,21 +1966,11 @@ def get_ordered_comptes_bis(tableau_comptes):
     return musiciens + comptes_speciaux
 
 
-def mois_fr(dt):
-    mois_fr_map = {
-        1: 'janvier', 2: 'février', 3: 'mars', 4: 'avril', 5: 'mai', 6: 'juin',
-        7: 'juillet', 8: 'août', 9: 'septembre', 10: 'octobre', 11: 'novembre', 12: 'décembre'
-    }
-    return f"{mois_fr_map[dt.month]} {dt.year}"
 
 
 from collections import defaultdict
 from datetime import date
 
-MOIS_FR = [
-    "janvier", "février", "mars", "avril", "mai", "juin",
-    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
-]
 
 COULEURS_MOIS = {
     'septembre': '#FFE0E0',
@@ -1901,27 +1986,5 @@ COULEURS_MOIS = {
     'juillet': '#FFDADA',
     'août': '#FFEFC1',
 }
-
-def regrouper_cachets_par_mois(cachets):
-    """Retourne une liste triée : [(mois_fr, [(musicien, [cachets]), ...]), ...]"""
-    data = defaultdict(lambda: defaultdict(list))
-    for c in cachets:
-        mois_str = MOIS_FR[c.date.month - 1]
-        data[mois_str][c.musicien].append(c)
-
-    mois_ordre = [
-        'septembre', 'octobre', 'novembre', 'décembre',
-        'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août'
-    ]
-    cachets_par_mois = []
-    for mois in mois_ordre:
-        if mois in data:
-            musiciens = sorted(
-                data[mois].items(),
-                key=lambda x: (x[0].nom.lower(), x[0].prenom.lower())
-            )
-            cachets_par_mois.append((mois.capitalize(), musiciens))
-    return cachets_par_mois
-
 
 

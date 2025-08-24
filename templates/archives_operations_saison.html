@@ -5,73 +5,78 @@
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/archives_operations.css') }}">
 
-
 <div class="container">
-    <h1>Opérations archivées - Saison {{ saison }}</h1>
-    <button onclick="ouvrirPopupRecherche()" title="Rechercher une opération" style="background:none; border:none; cursor:pointer;">🔍 Recherche par montant</button>
+  <h1>Opérations archivées - Saison {{ saison }}</h1>
+  <button onclick="ouvrirPopupRecherche()" title="Rechercher une opération" style="background:none; border:none; cursor:pointer;">🔍 Recherche par montant</button>
 
-    {% if operations %}
-    <table class="archived-table">
+  {% if groupes and groupes|length > 0 %}
+    {% for key, bloc in groupes.items() %}
+      <h2 class="mois-bandeau">{{ bloc.label }}</h2>
+
+      <table class="archived-table" data-month-key="{{ key }}">
         <thead>
-            <tr>
-                <th id="sort-date" style="cursor:pointer;">Date ⬍</th>
-                <th>Qui</th>
-                <th>Type</th>
-                <th>Motif</th>
-                <th></th>
-                <th id="sort-montant" style="cursor:pointer;">Montant ⬍</th>
-                <th>Concert</th>
-                <th style="text-align: center;">Actions</th>
-            </tr>
+          <tr>
+            <th id="sort-date-{{ loop.index }}" style="cursor:pointer;">Date ⬍</th>
+            <th>Qui</th>
+            <th>Type</th>
+            <th>Motif</th>
+            <th></th>
+            <th id="sort-montant-{{ loop.index }}" style="cursor:pointer; text-align:right;">Montant ⬍</th>
+            <th>Concert</th>
+            <th style="text-align: center;">Actions</th>
+          </tr>
         </thead>
         <tbody>
-            {% for op in operations %}
-            <tr class="{% if op.motif|lower == 'commission lionel' %}operation-auto{% endif %}">
-                <td>{{ op.date.strftime('%d/%m/%Y') }}</td>
-                <td>{{ op.musicien.prenom }} {{ op.musicien.nom }}</td>
-                <td>{{ op.type }}</td>
-                <td>{{ op.motif }}</td>
-                <td>{{ op.precision or '' }}</td>
-                <td>{{ "{:,.2f}".format(op.montant).replace(',', ' ').replace('.', ',') }} €</td>
-                <td>
-                    {% if op.concert %}
-                        {{ op.concert.date.strftime('%d/%m/%Y') }} — {{ op.concert.lieu }}
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td style="text-align: center;">
-                    {% if not op.auto_cb_asso7 and not op.auto_debit_salaire and op.motif|lower != 'commission lionel' %}
-                        <form method="GET" action="{{ url_for('modifier_operation', id=op.id) }}" style="display:inline;">
-                            <button type="submit" class="icon-button orange" title="Modifier">
-                                <i class="fas fa-pen"></i>
-                            </button>
-                        </form>
-                        <form method="POST" action="{{ url_for('supprimer_operation') }}" style="display:inline;" data-id="{{ op.id }}">
-                            <button type="submit" class="delete-operation-button" title="Supprimer cette opération">🗑</button>
-                        </form>
-                    {% else %}
-                        <span title="Opération automatique non modifiable">🔒</span>
-                    {% endif %}
-                </td>
+          {% for op in bloc["items"] %}
+            {% set motif_lower = (op.motif or '')|lower %}
+            {% set type_lower = (op.type or '')|lower %}
+            <tr class="{% if motif_lower == 'commission lionel' %}operation-auto{% endif %}">
+              <td>{{ op.date.strftime('%d/%m/%Y') }}</td>
+              <td>{{ op.musicien.prenom }} {{ op.musicien.nom }}</td>
+              <td>{{ op.type }}</td>
+              <td>{{ op.motif }}</td>
+              <td>{{ op.precision or '' }}</td>
+              <td style="text-align:right;">
+                {% if type_lower == 'credit' %}+{% else %}-{% endif %}
+                {{ op.montant | format_currency }}
+              </td>
+              <td>
+                {% if op.concert %}
+                  {{ op.concert.date.strftime('%d/%m/%Y') }} — {{ op.concert.lieu }}
+                {% else %}—{% endif %}
+              </td>
+              <td style="text-align: center;">
+                {% if not op.auto_cb_asso7 and not op.auto_debit_salaire and motif_lower != 'commission lionel' %}
+                  <form method="GET" action="{{ url_for('modifier_operation', id=op.id) }}" style="display:inline;">
+                    <button type="submit" class="icon-button orange" title="Modifier">
+                      <i class="fas fa-pen"></i>
+                    </button>
+                  </form>
+                  <form method="POST" action="{{ url_for('supprimer_operation') }}" style="display:inline;" data-id="{{ op.id }}">
+                    <button type="submit" class="delete-operation-button" title="Supprimer cette opération">🗑</button>
+                  </form>
+                {% else %}
+                  <span title="Opération automatique non modifiable">🔒</span>
+                {% endif %}
+              </td>
             </tr>
-            {% endfor %}
+          {% endfor %}
         </tbody>
-    </table>
-	<button id="btn-retour-liste" style="display:none; margin-top: 20px;" onclick="retourListe()">
-    🔁 Retour à la liste complète
-</button>
-    {% else %}
-        <p>Aucune opération enregistrée pour cette saison.</p>
-    {% endif %}
+      </table>
+    {% endfor %}
 
-    <div class="button-row">
-        <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-        <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-        <a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
-        <a href="{{ url_for('operations_a_venir') }}" class="a-venir-button">À venir</a>
-        <a href="{{ url_for('operations') }}" class="operations-button">Nouvelle opération</a>
-    </div>
+    <button id="btn-retour-liste" style="display:none; margin-top: 20px;" onclick="retourListe()">🔁 Retour à la liste complète</button>
+  {% else %}
+    <p>Aucune opération enregistrée pour cette saison.</p>
+  {% endif %}
+
+  <div class="button-row">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+    <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+    <a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
+    <a href="{{ url_for('operations_a_venir') }}" class="a-venir-button">À venir</a>
+    <a href="{{ url_for('operations') }}" class="operations-button">Nouvelle opération</a>
+  </div>
 </div>
 
 {% include '_popup_recherche.html' %}
@@ -80,37 +85,46 @@
 <script src="{{ url_for('static', filename='js/recherche_operations.js') }}"></script>
 
 <script>
+// tri par colonnes pour CHAQUE tableau mensuel
 function sortTableByColumn(table, columnIndex, numeric = false) {
-    const tbody = table.querySelector("tbody");
-    const rows = Array.from(tbody.querySelectorAll("tr"));
-    const currentOrder = table.getAttribute(`data-sort-${columnIndex}`) || "desc";
-    const newOrder = currentOrder === "asc" ? "desc" : "asc";
+  const tbody = table.querySelector("tbody");
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  const key = table.getAttribute("data-month-key") || "";
+  const attrName = `data-sort-${key}-${columnIndex}`;
+  const currentOrder = table.getAttribute(attrName) || "desc";
+  const newOrder = currentOrder === "asc" ? "desc" : "asc";
 
-    rows.sort((a, b) => {
-        let valA = a.children[columnIndex].innerText.trim();
-        let valB = b.children[columnIndex].innerText.trim();
+  rows.sort((a, b) => {
+    let valA = a.children[columnIndex].innerText.trim();
+    let valB = b.children[columnIndex].innerText.trim();
 
-        if (numeric) {
-            valA = parseFloat(valA.replace(',', '.').replace(/[^\d.-]/g, ''));
-            valB = parseFloat(valB.replace(',', '.').replace(/[^\d.-]/g, ''));
-        } else {
-            const [dA, mA, yA] = valA.split("/");
-            const [dB, mB, yB] = valB.split("/");
-            valA = new Date(`${yA}-${mA}-${dA}`);
-            valB = new Date(`${yB}-${mB}-${dB}`);
-        }
+    if (numeric) {
+      // garde les signes +/− et normalise
+      valA = parseFloat(valA.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d\.\-+]/g,''));
+      valB = parseFloat(valB.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d\.\-+]/g,''));
+    } else {
+      // date JJ/MM/AAAA
+      const [dA, mA, yA] = valA.split("/");
+      const [dB, mB, yB] = valB.split("/");
+      valA = new Date(`${yA}-${mA}-${dA}`).getTime();
+      valB = new Date(`${yB}-${mB}-${dB}`).getTime();
+    }
+    return (newOrder === "asc") ? (valA - valB) : (valB - valA);
+  });
 
-        return newOrder === "asc" ? valA - valB : valB - valA;
-    });
-
-    rows.forEach(row => tbody.appendChild(row));
-    table.setAttribute(`data-sort-${columnIndex}`, newOrder);
+  rows.forEach(row => tbody.appendChild(row));
+  table.setAttribute(attrName, newOrder);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    const table = document.querySelector(".archived-table");
-    document.getElementById("sort-date").addEventListener("click", () => sortTableByColumn(table, 0, false));
-    document.getElementById("sort-montant").addEventListener("click", () => sortTableByColumn(table, 5, true));
+  document.querySelectorAll("table.archived-table").forEach((table, i) => {
+    const idDate = `sort-date-${i+1}`;
+    const idMontant = `sort-montant-${i+1}`;
+    const thDate = document.getElementById(idDate);
+    const thMont = document.getElementById(idMontant);
+    if (thDate) thDate.addEventListener("click", () => sortTableByColumn(table, 0, false));
+    if (thMont) thMont.addEventListener("click", () => sortTableByColumn(table, 5, true));
+  });
 });
 </script>
 {% endblock %}

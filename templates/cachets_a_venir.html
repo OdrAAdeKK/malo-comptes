@@ -92,7 +92,6 @@
     <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
     <a href="{{ url_for('archives_cachets') }}" class="archives-button">Archives</a>
     <a href="{{ url_for('declarer_cachet') }}" class="nouv-cachets-button">Nouveau cachet</a>
-    <a href="{{ url_for('cachets_a_venir') }}" class="a-venir-button">À venir</a>
 	<form action="{{ url_for('preview_mail_cachets') }}" method="post" style="margin-bottom: 20px;">
 		<button type="submit" class="btn mon-bouton-vert">
 			Envoyer un mail à Lionel
