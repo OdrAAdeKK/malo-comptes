@@ -1,0 +1,38 @@
+<div id="popup-ajustements" style="display:none;">
+  <div class="popup-backdrop" style="
+    position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:9998;"></div>
+
+  <div class="popup-panel" style="
+    position:fixed; z-index:9999; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    width:min(92vw,720px); max-height:80vh; overflow:auto;
+    background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25);
+    padding:18px 18px 14px;">
+    <h3 style="margin:0 0 10px;">Ajuster / fixer les gains</h3>
+
+    <div id="ajustements-list">
+      <!-- Rempli dynamiquement par popup_ajustements.js -->
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+      <button id="ajust-cancel" type="button"
+              style="padding:8px 12px; border-radius:8px; border:1px solid #ddd; background:#f5f5f5;">
+        Annuler
+      </button>
+      <button id="ajust-save" type="button"
+              style="padding:8px 12px; border-radius:8px; border:0; background:#4285f4; color:#fff;">
+        Enregistrer
+      </button>
+    </div>
+
+    <style>
+      #ajustements-list .row{
+        display:grid; grid-template-columns: 1fr 130px auto; align-items:center;
+        gap:10px; padding:8px 0; border-bottom:1px dashed #eee;
+      }
+      #ajustements-list .row label{ font-weight:600; }
+      #ajustements-list .row input{ width:100%; padding:6px 8px; border:1px solid #ccc; border-radius:6px; text-align:right; }
+      #ajustements-list .row .note{ color:#666; font-size:.9em; white-space:nowrap; }
+    </style>
+  </div>
+</div>

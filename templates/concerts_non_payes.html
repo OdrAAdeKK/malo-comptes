@@ -4,67 +4,97 @@
 {% block body_class %}big-mode{% endblock %}
 
 {% block content %}
-<div class="container" style="margin-top:24px;">
+<div class="container wide" style="margin-top:24px;">
   <h1>Concerts non payés</h1>
 
   {% if groupes %}
     {% for key, bloc in groupes.items() %}
       <h2 class="mois-bandeau">{{ bloc.label }}</h2>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Lieu</th>
-            <th>Recette</th>
-            <th>Prévision</th>
-            <th>Marquer payé</th>
-            <th>Actions / Détails</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for concert in bloc["items"] %}
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
-              <td>{{ concert.lieu }}</td>
-              <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
-              <td><span style="color:#888;font-style:italic;">
-                {{ concert.recette_attendue | format_currency if concert.recette_attendue is not none else '' }}
-              </span></td>
-              <td style="text-align:center;">
-                <input type="checkbox"
-                       class="paye-checkbox"
-                       data-id="{{ concert.id }}"
-                       data-recette-attendue="{{ concert.recette_attendue or '' }}">
-              </td>
-              <td>
-                {% if credits_musiciens.get(concert.id) %}
-                  <div class="credits" style="font-size:0.95em; margin-bottom:8px;">
-                    <strong>Participants&nbsp;:</strong>
-                    <ul style="margin:6px 0 4px 16px; padding-left:0;">
-                      {% for mid, credit in credits_musiciens[concert.id].items() %}
-                        {% set m = musiciens_dict[mid] %}
-                        <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
-                      {% endfor %}
-                      <li style="font-weight:600; color:#673ab7;">
-                        ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
-                      </li>
-                    </ul>
-                  </div>
-                {% endif %}
-
-                <div class="actions">
-                  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
-                  <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
-                    <button type="submit" class="delete-button">🗑</button>
-                  </form>
-                  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
-                </div>
-              </td>
+              <th class="col-date">Date</th>
+              <th class="col-lieu">Lieu</th>
+              <th class="col-amount">Recette attendue</th>
+              <th class="col-amount">Frais</th>
+              <th class="col-amount">Prévision (net)</th>
+              <th class="col-paid">Marquer payé</th>
+              <th class="col-actions">Actions / Détails</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for concert in bloc["items"] %}
+              <tr>
+                <td class="col-date">{{ concert.date.strftime('%d/%m/%Y') }}</td>
+                <td class="col-lieu">{{ concert.lieu }}</td>
+
+                <td class="col-amount">
+                  {# si pas de recette réelle, on affiche la recette_attendue (brut) #}
+                  {% set brut = (concert.recette if concert.recette is not none else concert.recette_attendue) %}
+                  {{ brut | format_currency if brut is not none else '' }}
+                </td>
+
+                <td class="col-amount">
+                  <span style="color:#888;">
+                    {{ concert.frais | format_currency if concert.frais is not none else '' }}
+                  </span>
+                </td>
+
+                <td class="col-amount">
+                  {% if concert.recette_attendue is not none %}
+                    {% set net = ((concert.recette_attendue or 0) - (concert.frais or 0)) %}
+                    <span style="font-weight:600; color:{{ '#d32f2f' if net < 0 else '#444' }};">
+                      {{ net | format_currency }}
+                    </span>
+                    {% if concert.frais %}
+                      <div class="subnote">
+                        ({{ concert.recette_attendue | format_currency }} attendus – {{ concert.frais | format_currency }} frais)
+                      </div>
+                    {% endif %}
+                  {% else %}
+                    <span class="muted"></span>
+                  {% endif %}
+                </td>
+
+                <td class="col-paid">
+                  <input type="checkbox"
+                         class="paye-checkbox"
+                         data-id="{{ concert.id }}"
+                         data-recette-attendue="{{ concert.recette_attendue or '' }}">
+                </td>
+
+                <td class="col-actions">
+                  {% if credits_musiciens.get(concert.id) %}
+                    <div class="credits">
+                      <strong>Participants&nbsp;:</strong>
+                      <ul>
+                        {% for mid, credit in credits_musiciens[concert.id].items() %}
+                          {% set m = musiciens_dict[mid] %}
+                          <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
+                        {% endfor %}
+                        <li class="asso7">ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}</li>
+                      </ul>
+                    </div>
+                  {% endif %}
+
+                  <div class="actions">
+                    <!-- ⚖️ Ajustements / gains fixes -->
+                    <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+
+                    <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
+                    <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
+                      <button type="submit" class="delete-button">🗑</button>
+                    </form>
+                    <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% endfor %}
   {% else %}
     <p>Aucun concert non payé.</p>
@@ -78,8 +108,11 @@
   </div>
 </div>
 
+{% include "_popup_ajustements.html" %}
 {% include "_popup_paiement.html" %}
+<script src="{{ url_for('static', filename='js/popup_ajustements.js') }}"></script>
 <script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
+
 <script>
 document.querySelectorAll('.paye-checkbox').forEach(function(box) {
   box.addEventListener('change', function() {
@@ -90,7 +123,7 @@ document.querySelectorAll('.paye-checkbox').forEach(function(box) {
         fetch("/valider_paiement_concert", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ concert_id: concertId, compte: compte })
+          body: JSON.stringify({ concert_id: Number(concertId), compte: compte }) // Number() par cohérence
         })
         .then(r => r.json())
         .then(data => {
@@ -105,7 +138,7 @@ document.querySelectorAll('.paye-checkbox').forEach(function(box) {
       fetch("/annuler_paiement_concert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concert_id: concertId })
+        body: JSON.stringify({ concert_id: Number(concertId) })
       })
       .then(r => r.json())
       .then(data => {
@@ -118,19 +151,48 @@ document.querySelectorAll('.paye-checkbox').forEach(function(box) {
 </script>
 
 <style>
+/* Container plus large, avec fallback responsive */
+.container.wide { 
+  width: min(96vw, 1200px);
+  max-width: 1200px;
+}
+
+/* Scroll horizontal de secours sur écrans étroits */
+.table-wrap { overflow-x: auto; }
+
+/* Table + colonnes */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+th, td { padding: 10px; border-bottom: 1px solid #ddd; }
+th { background-color: #4285f4; color: white; }
+
+/* Largeurs de colonnes (donne plus d'espace à Lieu) */
+.col-date    { width: 120px; white-space: nowrap; }
+.col-lieu    { width: 32%; min-width: 300px; white-space: normal; word-break: normal; overflow-wrap: break-word; }
+.col-amount  { width: 140px; text-align: right; }
+.col-paid    { width: 110px; text-align: center; }
+.col-actions { width: 250px; }
+
+tr:hover { background-color: #f7f9ff; }
+
 .mois-bandeau{
   margin:22px 0 6px; padding:10px 14px; background:#ffe6e6;
   border-radius:8px; font-weight:700; font-size:18px;
 }
-table { width:100%; border-collapse:collapse; }
-th, td { padding:10px; border-bottom:1px solid #ddd; }
-th { background-color:#4285f4; color:white; }
-.actions{ display:flex; gap:6px; }
-.edit-button,.delete-button,.participation-button{
-  padding:6px 10px; border-radius:5px; text-decoration:none; font-size:.9em; border:none; cursor:pointer;
+
+/* Détails */
+.credits { font-size: 0.95em; margin-bottom: 8px; }
+.credits ul { margin: 6px 0 4px 16px; padding-left: 0; }
+.credits .asso7 { font-weight: 600; color: #673ab7; }
+.subnote { font-size: 0.85em; color:#888; }
+
+/* Actions */
+.actions{ display:flex; gap:6px; margin-top: 6px; }
+.edit-button,.delete-button,.participation-button,.adjust-button{
+  padding:6px 10px; border-radius:5px; text-decoration:none; font-size:.9em; border:none; cursor:pointer; color:#fff;
 }
-.edit-button{ background:#f9a825; color:#fff; } .edit-button:hover{ background:#f57f17; }
-.delete-button{ background:#d32f2f; color:#fff; } .delete-button:hover{ background:#b71c1c; }
-.participation-button{ background:#4285f4; color:#fff; } .participation-button:hover{ background:#3367d6; }
+.adjust-button{ background:#6d28d9; } .adjust-button:hover{ background:#5b21b6; }
+.edit-button{ background:#f9a825; } .edit-button:hover{ background:#f57f17; }
+.delete-button{ background:#d32f2f; } .delete-button:hover{ background:#b71c1c; }
+.participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
 </style>
 {% endblock %}

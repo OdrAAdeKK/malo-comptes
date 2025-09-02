@@ -13,31 +13,60 @@
       <table>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Lieu</th>
-            <th>Recette</th>
-            <th>Prévision</th>
-            <th>Payé</th>
-            <th>Actions / Détails</th>
+            <th class="col-date">Date</th>
+            <th class="col-lieu">Lieu</th>
+            <th class="col-amount">Recette attendue</th>
+            <th class="col-amount">Frais</th>
+            <th class="col-amount">Prévision (net)</th>
+            <th class="col-paid">Payé</th>
+            <th class="col-actions">Actions / Détails</th>
           </tr>
         </thead>
         <tbody>
         {% for concert in bloc['items'] %}
           <tr>
-            <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
-            <td>{{ concert.lieu }}</td>
-            <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
-            <td><span style="color:#888;font-style:italic;">
+            <td class="col-date">{{ concert.date.strftime('%d/%m/%Y') }}</td>
+            <td class="col-lieu">{{ concert.lieu }}</td>
+
+            {# --- Recette attendue (toujours) + éventuelle note "réel" --- #}
+            <td class="col-amount">
               {{ concert.recette_attendue | format_currency if concert.recette_attendue is not none else '' }}
-            </span></td>
-            <td style="text-align:center;">
+              {% if concert.recette is not none %}
+                <div class="subnote">(réel : {{ concert.recette | format_currency }})</div>
+              {% endif %}
+            </td>
+
+            <td class="col-amount">
+              <span style="color:#888;">
+                {{ concert.frais | format_currency if concert.frais is not none else '' }}
+              </span>
+            </td>
+
+            {# --- Prévision (net) basée en priorité sur recette_attendue --- #}
+            <td class="col-amount">
+              {% set base = (concert.recette_attendue if concert.recette_attendue is not none else (concert.recette if concert.recette is not none else None)) %}
+              {% if base is not none %}
+                {% set net = (base or 0) - (concert.frais or 0) %}
+                <span style="font-weight:600; color:{{ '#d32f2f' if net < 0 else '#444' }};">
+                  {{ net | format_currency }}
+                </span>
+                {% if concert.frais %}
+                  <div class="subnote">
+                    ({{ base | format_currency }} attendus – {{ concert.frais | format_currency }} frais)
+                  </div>
+                {% endif %}
+              {% endif %}
+            </td>
+
+            <td class="col-paid">
               <input type="checkbox"
                      class="paye-checkbox"
                      data-id="{{ concert.id }}"
                      data-recette-attendue="{{ concert.recette_attendue or '' }}"
                      {% if concert.paye %}checked{% endif %}>
             </td>
-            <td>
+
+            <td class="col-actions">
               {% if credits_musiciens.get(concert.id) %}
                 <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
                   <strong>Participants&nbsp;:</strong>
@@ -52,7 +81,11 @@
                   </ul>
                 </div>
               {% endif %}
+
               <div class="actions">
+                <!-- ⚖️ Ajustements / gains fixes -->
+                <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+
                 <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
                 <form method="POST" action="{{ url_for('supprimer_concert', concert_id=concert.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce concert ?');">
                   <button type="submit" class="delete-button">🗑</button>
@@ -78,7 +111,10 @@
   </div>
 </div>
 
+{% include "_popup_ajustements.html" %}
 {% include "_popup_paiement.html" %}
+<script src="{{ url_for('static', filename='js/popup_ajustements.js') }}"></script>
+<script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
 
 <style>
   .container {
@@ -86,24 +122,34 @@
     box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 1200px; width: 100%;
   }
   h2 { font-size: 1.2rem; color:#333; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 26px; }
-  th, td { text-align: left; padding: 10px; border-bottom: 1px solid #ddd; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 26px; table-layout: fixed; }
+  th, td { padding: 10px; border-bottom: 1px solid #ddd; }
   th { background-color: #4285f4; color: white; }
   tr:hover { background-color: #f7f9ff; }
+
+  .col-date { width: 120px; white-space: nowrap; text-align:left; }
+  .col-lieu { width: 30%; min-width: 260px; word-break: normal; overflow-wrap: break-word; text-align:left; }
+  .col-amount { width: 150px; text-align: right; }
+  .col-paid   { width: 110px; text-align: center; }
+  .col-actions{ width: 280px; text-align:left; }
+
+  th.col-amount { text-align: right; }
+  th.col-paid   { text-align: center; }
+  th.col-actions{ text-align: left; }
+
   .actions { display: flex; gap: 6px; }
-  .edit-button, .delete-button, .participation-button {
+  .edit-button, .delete-button, .participation-button, .adjust-button {
     padding: 6px 10px; border-radius: 5px; text-decoration: none;
-    font-size: 0.9em; display: inline-block; border: none; cursor: pointer;
+    font-size: 0.9em; display: inline-block; border: none; cursor: pointer; color:#fff;
   }
-  .edit-button { background-color: #f9a825; color: white; }
-  .edit-button:hover { background-color: #f57f17; }
-  .delete-button { background-color: #d32f2f; color: white; }
-  .delete-button:hover { background-color: #b71c1c; }
-  .participation-button { background-color: #4285f4; color: white; }
-  .participation-button:hover { background-color: #3367d6; }
+  .adjust-button { background:#6d28d9; } .adjust-button:hover { background:#5b21b6; }
+  .edit-button { background-color: #f9a825; } .edit-button:hover { background-color: #f57f17; }
+  .delete-button { background-color: #d32f2f; } .delete-button:hover { background-color: #b71c1c; }
+  .participation-button { background-color: #4285f4; } .participation-button:hover { background-color: #3367d6; }
+
+  .subnote { font-size: .85em; color:#888; }
 </style>
 
-<script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
 <script>
 document.querySelectorAll('.paye-checkbox').forEach(function(box) {
   box.addEventListener('change', function() {
@@ -111,7 +157,7 @@ document.querySelectorAll('.paye-checkbox').forEach(function(box) {
     if (this.checked) {
       showPopupPaiement(concertId, function(compte, recetteSaisie) {
         if (!compte) { box.checked = false; return; }
-        const payload = { concert_id: concertId, compte: compte };
+        const payload = { concert_id: Number(concertId), compte: compte };
         if (recetteSaisie) payload.recette = recetteSaisie;
         fetch("/valider_paiement_concert", {
           method: "POST",
@@ -129,7 +175,7 @@ document.querySelectorAll('.paye-checkbox').forEach(function(box) {
       fetch("/annuler_paiement_concert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concert_id: concertId })
+        body: JSON.stringify({ concert_id: Number(concertId) })
       })
       .then(r => r.json())
       .then(data => {

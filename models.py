@@ -51,6 +51,8 @@ class Participation(db.Model):
     credit_calcule = db.Column(db.Float, nullable=True)
     credit_calcule_potentiel = db.Column(db.Float, default=0.0)
     musicien = db.relationship('Musicien', backref=db.backref('participations', lazy=True))
+    gain_fixe = db.Column(db.Numeric(10, 2), nullable=True)  # None = non fixé, sinon montant absolu
+
 
 class Operation(db.Model):
     __tablename__ = 'operations'

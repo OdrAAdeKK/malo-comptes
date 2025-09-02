@@ -1156,10 +1156,16 @@ def enregistrer_operation_en_db(data):
         try:
             concert = Concert.query.get(concert_id)
             if concert:
-                concert.frais = (concert.frais or 0.0) + float(montant)
-                db.session.add(concert)
+                # 1) toujours recalculer la somme des frais SQL (évite écarts si modifs/suppressions)
+                recalculer_frais_concert(concert.id)
+                db.session.flush()  # s'assure que concert.frais est à jour en DB
+
+                # 2) recalcul immédiat des potentiels pour CE concert
+                from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
         except Exception as e:
             print("⚠️ Erreur mise à jour frais concert:", e)
+
 
     # 💡 Si Recette concert : marquer le concert comme payé
     if motif == "Recette concert" and concert_id:

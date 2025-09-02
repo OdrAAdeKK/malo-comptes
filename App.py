@@ -22,6 +22,8 @@ from exports import generer_export_excel
 from mes_utils import format_currency
 print("format_currency importé depuis mes_utils :", format_currency)
 
+
+
 # Chargement des variables d’environnement
 load_dotenv("env.txt")
 
@@ -49,6 +51,22 @@ elif database_url.startswith("postgresql://") and "+psycopg" not in database_url
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,      # ping avant chaque checkout pour éviter une connexion morte
+    "pool_recycle": 300,        # recycle les connexions > 5 min (évite timeouts/load balancer)
+    "pool_timeout": 30,
+    "pool_size": 5,
+    "max_overflow": 5,
+    "connect_args": {
+        "sslmode": "require",
+        # keepalives côté libpq (psycopg3) : aide à garder la connexion vivante
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    },
+}
+
 
 
 
@@ -102,6 +120,19 @@ COULEURS_MOIS = {
     'juillet': '#FFDADA',
     'août': '#FFEFC1',
 }
+
+
+
+uri = os.environ.get("DATABASE_URL", "")
+if uri.startswith("postgres://"):
+    # SQLAlchemy 2.x + psycopg3 préfèrent 'postgresql+psycopg://'
+    uri = uri.replace("postgres://", "postgresql+psycopg://", 1)
+
+# Ajoute sslmode=require si absent (Render Postgres le supporte)
+if uri and "sslmode=" not in uri:
+    uri += ("&" if "?" in uri else "?") + "sslmode=require"
+
+app.config["SQLALCHEMY_DATABASE_URI"] = uri or "sqlite:///local.db"
 
 # ------------ ROUTES DE BASE ------------
 
@@ -228,7 +259,7 @@ def liste_concerts():
     credits_musiciens, credits_asso7, credits_jerome = get_credits_concerts_from_db(concerts)
 
     # Regroupement par mois pour le template
-    groupes = grouper_par_mois(concerts, "date")
+    groupes = grouper_par_mois(concerts, "date", descending=False)
 
     # (optionnel) petit log de diag :
     try:
@@ -416,7 +447,7 @@ def concerts_non_payes_view():
 
     credits_musiciens, credits_asso7, credits_jerome = get_credits_concerts_from_db(concerts)
 
-    groupes = grouper_par_mois(concerts, "date")   # ← clé
+    groupes = grouper_par_mois(concerts, "date", descending=False)
 
     return render_template(
         "concerts_non_payes.html",
@@ -560,42 +591,37 @@ from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_co
 
 @app.route("/annuler_paiement_concert", methods=["POST"])
 def annuler_paiement_concert():
-    data = request.get_json()
+    from mes_utils import supprimer_recette_concert_pour_concert
+    from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+
+    data = request.get_json(silent=True) or {}
     concert_id = data.get("concert_id")
     concert = Concert.query.get(concert_id)
-
     if not concert:
-        return jsonify(success=False, message="Concert introuvable.")
+        return jsonify(success=False, message="Concert introuvable."), 404
 
     try:
-        # ➤ Restaurer la recette_attendue
-        if concert.recette and (concert.recette_attendue is None or concert.recette_attendue == 0):
-            concert.recette_attendue = concert.recette
+        # 1) Restaurer une prévision si besoin
+        if concert.recette is not None and (concert.recette_attendue is None):
+            concert.recette_attendue = float(concert.recette) or 0.0
 
-        # ➤ Supprimer la recette réelle
+        # 2) Supprimer toutes les opérations "Recette concert" du concert
+        nb_suppr = supprimer_recette_concert_pour_concert(concert.id)
+
+        # 3) Repasse en non-payé
         concert.recette = None
-
-        # ➤ Marquer comme non payé
         concert.paye = False
-
-        # ➤ Supprimer l’opération liée de recette
-        op_recette = next((op for op in concert.operations if op.nature == "Recette concert"), None)
-        if op_recette:
-            db.session.delete(op_recette)
-            print(f"[−] Opération recette supprimée (id={op_recette.id})")
-
-        # ➤ Réinitialisation + recalcul participations
-        mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
-
+        db.session.add(concert)
         db.session.commit()
-        print(f"[✓] Paiement annulé pour concert id={concert.id}")
-        return jsonify(success=True)
 
+        # 4) Recalcul des crédits potentiels
+        mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
+        db.session.commit()
+
+        return jsonify(success=True, deleted=nb_suppr)
     except Exception as e:
         db.session.rollback()
-        return jsonify(success=False, message=str(e))
-
-
+        return jsonify(success=False, message=str(e)), 500
 
 
 # --------- CRUD PARTICIPATIONS ---------
@@ -619,7 +645,7 @@ def liste_participations(concert_id):
         participants_ids = set(int(mid) for mid in request.form.getlist('participants'))
         enregistrer_participations(concert.id, participants_ids, jerome_id=jerome_id)
 
-        # ✅ Appel du recalcul des participations après validation
+        # ✅ Recalcul des participations potentielles après validation
         from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
         mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
 
@@ -647,8 +673,6 @@ def liste_participations(concert_id):
         musiciens=musiciens,
         participants_ids=participants_ids
     )
-
-
 
 
 @app.route('/concert/<int:concert_id>/participation/ajouter', methods=['GET', 'POST'])
@@ -698,6 +722,7 @@ def modifier_participation(participation_id):
 
     return render_template('modifier_participation.html', participation=participation, musiciens=musiciens)
 
+
 @app.route('/participation/supprimer/<int:participation_id>', methods=['POST'])
 def supprimer_participation(participation_id):
     participation = Participation.query.get_or_404(participation_id)
@@ -705,7 +730,106 @@ def supprimer_participation(participation_id):
     db.session.delete(participation)
     db.session.commit()
     return redirect(url_for('liste_participations', concert_id=concert_id))
-    
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  AJOUT : routes pour l'ajustement (gains "fixés" par musicien)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/participants_concert/<int:concert_id>")
+def participants_concert(concert_id):
+    """Renvoie (JSON) la liste des participants du concert avec montants potentiel/réel et gain_fixe."""
+    concert = Concert.query.get_or_404(concert_id)
+
+    parts = []
+    participations = (
+        db.session.query(Participation, Musicien)
+        .join(Musicien, Musicien.id == Participation.musicien_id)
+        .filter(Participation.concert_id == concert_id)
+        .all()
+    )
+    for p, m in participations:
+        parts.append({
+            "participation_id": p.id,
+            "musicien_id": m.id,
+            "nom": f"{m.prenom} {m.nom}",
+            "potentiel": float(p.credit_calcule_potentiel or 0),
+            "reel": float(p.credit_calcule or 0),
+            "fixe": (None if p.gain_fixe is None else float(p.gain_fixe)),
+        })
+
+    return jsonify(success=True, concert_id=concert_id, items=parts, paye=bool(concert.paye))
+
+
+@app.route("/ajuster_gains", methods=["POST"])
+def ajuster_gains():
+    """
+    JSON attendu :
+    {
+      "concert_id": 123,  # <-- nombre !
+      "overrides": { "<participation_id>": <montant_ou_null>, ... }
+    }
+    """
+    from calcul_participations import (
+        mettre_a_jour_credit_calcule_potentiel_pour_concert,
+        mettre_a_jour_credit_calcule_reel_pour_concert,
+    )
+
+    data = request.get_json(silent=True) or {}
+    concert_id_raw = data.get("concert_id")
+
+    # ✅ cast robuste en int (corrige l'erreur integer = varchar)
+    try:
+        concert_id = int(concert_id_raw)
+    except (TypeError, ValueError):
+        return jsonify(success=False, message="concert_id invalide"), 400
+
+    overrides = data.get("overrides") or {}
+
+    concert = Concert.query.get_or_404(concert_id)
+
+    # 1) enregistrer les overrides (tolère "1 200,50")
+    try:
+        for pid_str, val in overrides.items():
+            p = Participation.query.get(int(pid_str))
+            if not p or p.concert_id != concert_id:  # ici concert_id est bien un int
+                continue
+            raw = "" if val is None else str(val).strip()
+            raw = (raw.replace("\xa0", "").replace(" ", "").replace(",", "."))
+            if raw == "":
+                p.gain_fixe = None
+            else:
+                num = round(float(raw), 2)
+                if num < 0:
+                    return jsonify(success=False, message="Un gain fixé ne peut pas être négatif."), 400
+                p.gain_fixe = num
+            db.session.add(p)
+        db.session.commit()
+
+        # 🔎 DEBUG : ce qui est effectivement en DB après sauvegarde
+        saved = {
+            p.id: (p.musicien_id, (float(p.gain_fixe) if p.gain_fixe is not None else None))
+            for p in Participation.query.filter_by(concert_id=concert_id).all()  # ✅ int ici
+        }
+        print(f"[DEBUG] gain_fixe en DB pour concert {concert_id} :", saved)
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(success=False, message=f"Erreur d'enregistrement des ajustements : {e}"), 400
+
+    # 2) recalculs après ajustements
+    try:
+        if concert.paye:
+            mettre_a_jour_credit_calcule_reel_pour_concert(concert_id)
+        else:
+            mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
+        db.session.commit()
+        return jsonify(success=True)
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(success=False, message=f"Erreur de recalcul : {e}"), 400
+
+
 
 # --------- CRUD OPERATIONS ---------
     

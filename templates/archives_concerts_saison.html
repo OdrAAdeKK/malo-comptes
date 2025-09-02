@@ -29,7 +29,13 @@
               <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
               <td>{{ concert.frais | format_currency if concert.frais is not none else '' }}</td>
               <td style="text-align:center;">
-                <input type="checkbox" {% if concert.paye %}checked{% endif %} {% if readonly_checkboxes %}disabled{% endif %}>
+                <input
+                  type="checkbox"
+                  class="paye-checkbox"
+                  data-id="{{ concert.id }}"
+                  title="Cocher/décocher le statut payé"
+                  {% if concert.paye %}checked{% endif %}
+                  {% if readonly_checkboxes %}disabled{% endif %}>
               </td>
               <td>
                 {% if credits_musiciens.get(concert.id) %}
@@ -48,6 +54,9 @@
                 {% endif %}
 
                 <div class="actions">
+                  <!-- ⚖️ Ajustements / gains fixes -->
+                  <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+
                   <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
                   <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
                 </div>
@@ -67,6 +76,9 @@
   </div>
 </div>
 
+{% include "_popup_ajustements.html" %}
+<script src="{{ url_for('static', filename='js/popup_ajustements.js') }}"></script>
+
 <style>
   .container { background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1); max-width:1200px; }
   .mois-bandeau { background:#fde7e7; padding:10px 14px; border-radius:8px; margin:24px 0 8px; }
@@ -75,7 +87,49 @@
   th { background:#4285f4; color:white; }
   tr:hover { background:#f9fafb; }
   .actions a { margin-right:6px; text-decoration:none; }
-  .edit-button { background:#f9a825; color:#fff; padding:6px 10px; border-radius:5px; }
-  .participation-button { background:#4285f4; color:#fff; padding:6px 10px; border-radius:5px; }
+
+  /* Boutons harmonisés */
+  .adjust-button,.edit-button,.participation-button{
+    padding:6px 10px; border-radius:5px; color:#fff; font-weight:500;
+  }
+  .adjust-button{ background:#6d28d9; }        .adjust-button:hover{ background:#5b21b6; }
+  .edit-button{ background:#f9a825; }          .edit-button:hover{ background:#f57f17; }
+  .participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
 </style>
+
+<script>
+  // (Dé)cocher "Payé" depuis les archives
+  document.querySelectorAll('.paye-checkbox').forEach(function(box) {
+    box.addEventListener('change', function() {
+      const concertId = this.dataset.id;
+
+      // On gère surtout la dé-coche (retour en non-payé)
+      if (!this.checked) {
+        if (!confirm("Annuler la validation du paiement pour ce concert ?")) {
+          this.checked = true;
+          return;
+        }
+        fetch("/annuler_paiement_concert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ concert_id: Number(concertId) })
+        })
+        .then(r => r.json())
+        .then(data => {
+          if (data.success) {
+            // La page archives n'affiche que des concerts payés : on recharge.
+            location.reload();
+          } else {
+            alert("Erreur : " + (data.message || "inconnue"));
+            this.checked = true;
+          }
+        })
+        .catch(() => { alert("Erreur réseau"); this.checked = true; });
+      } else {
+        // Re-cocher depuis les archives -> on bloque (optionnel)
+        this.checked = false;
+      }
+    });
+  });
+</script>
 {% endblock %}
