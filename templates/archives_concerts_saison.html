@@ -53,13 +53,22 @@
                   </div>
                 {% endif %}
 
-                <div class="actions">
-                  <!-- ⚖️ Ajustements / gains fixes -->
-                  <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+				<div class="actions">
+				  <!-- ⚖️ Ajustements / gains fixes -->
+				  <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
 
-                  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
-                  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
-                </div>
+				  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button" title="Modifier">✏️</a>
+				  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button" title="Participations">👥</a>
+
+				  <!-- 🗑️ Supprimer définitivement le concert (et ses opérations/participations) -->
+				  <form method="post"
+						action="{{ url_for('supprimer_concert', concert_id=concert.id) }}"
+						onsubmit="return confirm('Supprimer définitivement ce concert et toutes ses opérations/participations ?');"
+						style="display:inline;">
+					<button type="submit" class="delete-button" title="Supprimer définitivement">🗑️</button>
+				  </form>
+				</div>
+
               </td>
             </tr>
           {% endfor %}
