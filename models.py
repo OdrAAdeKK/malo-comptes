@@ -32,13 +32,31 @@ class Concert(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     date = db.Column(db.Date, nullable=False)
     lieu = db.Column(db.String(100), nullable=False)
-    recette = db.Column(db.Float, nullable=True)  # Recette réelle une fois payé
-    recette_attendue = db.Column(db.Float, nullable=True)  # 💡 Nouveau champ pour la prévision
+    recette = db.Column(db.Float, nullable=True)
+    recette_attendue = db.Column(db.Float, nullable=True)
     frais = db.Column(db.Float, nullable=True)
     paye = db.Column(db.Boolean, default=False)
+
     participations = db.relationship('Participation', backref='concert', cascade="all, delete-orphan")
-    operations = db.relationship('Operation', backref='concert', lazy=True)
+
+    # ⬇️ Make explicit which FK links operations -> this concert
+    operations = db.relationship(
+        'Operation',
+        back_populates='concert',
+        foreign_keys='Operation.concert_id',
+        lazy=True
+    )
+
     mode_paiement_prevu = db.Column(db.String(32), default='CB ASSO7')
+    frais_previsionnels = db.Column(db.Float, nullable=True)
+
+    # op de frais prévisionnels (optionnelle) pointant vers operations.id
+    op_prevision_frais_id = db.Column(db.Integer, db.ForeignKey('operations.id'), nullable=True)
+    op_prevision_frais = db.relationship(
+        'Operation',
+        foreign_keys=[op_prevision_frais_id],
+        uselist=False
+    )
 
 
 class Participation(db.Model):
@@ -61,17 +79,32 @@ class Operation(db.Model):
     musicien_id = db.Column(db.Integer, db.ForeignKey('musiciens.id'), nullable=True)
     type = db.Column(db.String(20), nullable=False)  # 'credit', 'debit'
     motif = db.Column(db.String(100))
-    nature = db.Column(db.String(50), nullable=True)  # ex : 'recette', 'frais', 'salaire'
+    nature = db.Column(db.String(50), nullable=True)
     precision = db.Column(db.String(255))
     montant = db.Column(db.Float, nullable=False)
     date = db.Column(db.Date, nullable=False)
     brut = db.Column(db.Float, nullable=True)
+
+    # ⬇️ FK standard vers concerts
     concert_id = db.Column(db.Integer, db.ForeignKey('concerts.id'), nullable=True)
+    concert = db.relationship(
+        'Concert',
+        back_populates='operations',
+        foreign_keys=[concert_id]
+    )
+
     musicien = db.relationship('Musicien', backref=db.backref('operations', lazy=True))
+
     auto_cb_asso7 = db.Column(db.Boolean, default=False, nullable=False)
+
+    # auto-liens entre opérations (salaire / débit auto / commission, etc.)
     operation_liee_id = db.Column(db.Integer, db.ForeignKey('operations.id'), nullable=True)
+    operation_liee = db.relationship('Operation', remote_side=[id], backref='operations_liees')
+
     auto_debit_salaire = db.Column(db.Boolean, default=False, nullable=False)
 
+    # utilisé pour “Frais (prévisionnels)”
+    previsionnel = db.Column(db.Boolean, nullable=False, default=False)
 
 
 class Cachet(db.Model):
