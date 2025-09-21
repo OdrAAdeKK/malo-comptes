@@ -33,152 +33,135 @@ function initFlatpickr() {
    2. Logique Musicien / Motif / Mode
    ======================================= */
 function initMusicienMotifLogic() {
-    // Déclaration des éléments...
-    const quiSelect = document.getElementById('musicien');
-    const motifSelect = document.getElementById('motif');
-	const brutField = document.getElementById('brut');
-    const creditRadio = document.getElementById('credit_radio');
-    const debitRadio = document.getElementById('debit_radio');
-    const modeRadios = document.querySelectorAll('input[name="mode"]');
-    const structures = ["ASSO7", "CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7"];
+  const quiSelect   = document.getElementById('musicien');
+  const motifSelect = document.getElementById('motif');
+  const brutField   = document.getElementById('brut');
 
-    function updateFormFields() {
-        const selectedBenef = quiSelect ? quiSelect.value.trim() : "";
-        const selectedMotif = motifSelect ? motifSelect.value.trim() : "";
+  // Radios + hidden
+  const creditRadio = document.getElementById('credit_radio');
+  const debitRadio  = document.getElementById('debit_radio');
+  const typeHidden  = document.getElementById('type_hidden');
 
-// ===== LOGIQUE POUR LES MOTIFS =====
-const motifRules = {
-    "musicien": ["Salaire", "Frais"],
+  // Mode de paiement
+  const modeRadios  = document.querySelectorAll('input[name="mode"]');
+
+  if (!quiSelect || !motifSelect || !creditRadio || !debitRadio || !typeHidden) return;
+
+  // ============= Règles de motifs autorisés
+  const motifRules = {
+    musicien: ["Salaire", "Frais", "Remboursement frais divers"],
     "ASSO7": ["Achat", "Vente"],
     "CB ASSO7": ["Frais", "Recette concert"],
     "CAISSE ASSO7": ["Frais", "Recette concert"]
-};
+  };
+  const isStructure = (val) => ["ASSO7", "CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7"].includes(val);
 
-function getMotifAllowedList(benef) {
-    // Par défaut, si pas une structure reconnue → musicien
-    if (["ASSO7", "CB ASSO7", "CAISSE ASSO7"].includes(benef)) return motifRules[benef];
-    return motifRules["musicien"];
-}
+  function allowedMotifsFor(benef) {
+    return motifRules[benef] || motifRules.musicien;
+  }
 
-if (motifSelect) {
-    const selectedBenef = quiSelect ? quiSelect.value.trim() : "";
-    const allowedMotifs = getMotifAllowedList(selectedBenef);
-
-    for (const option of motifSelect.options) {
-        if (!allowedMotifs.includes(option.value)) {
-            option.disabled = true;
-            option.hidden = true;
-        } else {
-            option.disabled = false;
-            option.hidden = false;
-        }
-    }
-    // Si le motif sélectionné n’est plus autorisé, sélectionne le premier motif valide
-    if (!allowedMotifs.includes(motifSelect.value)) {
-        motifSelect.value = allowedMotifs[0];
-    }
-
-    // Grise le champ BRUT sauf si 'Salaire'
-    if (motifSelect.value === "Salaire") {
-        brutField.disabled = false;
-        brutField.style.background = ""; // normal
+  // ============= Helpers
+  function setType(value, lock) {
+    if (value === 'credit') {
+      creditRadio.checked = true;
+      debitRadio.checked  = false;
     } else {
-        brutField.disabled = true;
-        brutField.value = ""; // optionnel, pour effacer si pas salaire
-        brutField.style.background = "#f3f3f3";
+      debitRadio.checked  = true;
+      creditRadio.checked = false;
     }
-}
+    creditRadio.disabled = !!lock;
+    debitRadio.disabled  = !!lock;
+    typeHidden.value     = value;
+  }
 
+  function unlockType() {
+    creditRadio.disabled = false;
+    debitRadio.disabled  = false;
+  }
 
+  function syncHiddenFromRadios() {
+    typeHidden.value = creditRadio.checked ? 'credit' : (debitRadio.checked ? 'debit' : '');
+  }
 
-        // Forcer certains comportements pour CAISSE ASSO7 (débit interdit, mode espèces forcé)
-		const isCaisse = selectedBenef === "CAISSE ASSO7";
-		if (debitRadio) debitRadio.disabled = isCaisse;
-		if (creditRadio && isCaisse) creditRadio.checked = true;
-
-		if (isCaisse) {
-			// Mode Espèces coché, non modifiable
-			for (const radio of modeRadios) {
-				radio.disabled = true;
-				if (radio.value === "Espèces") radio.checked = true;
-			}
-		} else {
-			// Mode Compte coché par défaut, tout redevient modifiable
-			for (const radio of modeRadios) {
-				radio.disabled = false;
-				if (radio.value === "Compte") radio.checked = true;
-			}
-		}
-
-
-			// Ajuster type d'opération selon le motif sélectionné et le bénéficiaire
-			creditRadio.disabled = false;
-			debitRadio.disabled = false;
-
-			if (selectedMotif === "Vente") {
-				creditRadio.checked = true;
-			} else if (selectedMotif === "Recette concert") {
-				creditRadio.checked = true;
-				creditRadio.disabled = true;
-				debitRadio.disabled = true;
-			} else if (selectedMotif === "Salaire") {
-				debitRadio.checked = true;
-				creditRadio.disabled = true;
-				debitRadio.disabled = true;
-			} else if (selectedMotif === "Frais") {
-				if (["CB ASSO7", "CAISSE ASSO7"].includes(selectedBenef)) {
-					debitRadio.checked = true;
-					creditRadio.disabled = true;
-					debitRadio.disabled = true;
-				} else {
-					creditRadio.checked = true;
-					creditRadio.disabled = true;
-					debitRadio.disabled = true;
-				}
-			} else {
-				// Par défaut, aucune sélection automatique
-			}
-
-
+  function filterMotifs(benef) {
+    const allowed = allowedMotifsFor(benef);
+    Array.from(motifSelect.options).forEach(opt => {
+      const ok = allowed.includes(opt.value);
+      opt.disabled = !ok;
+      opt.hidden   = !ok;
+    });
+    if (!allowed.includes(motifSelect.value)) {
+      motifSelect.value = allowed[0];
     }
+  }
 
-    if (quiSelect) {
-        quiSelect.addEventListener('change', updateFormFields);
+  function lockEspecesIfCaisse(benef) {
+    const isCaisse = benef === "CAISSE ASSO7";
+    modeRadios.forEach(r => {
+      r.disabled = isCaisse;
+      if (isCaisse) r.checked = (r.value === "Espèces");
+    });
+    if (!isCaisse) {
+      // par défaut on remet "Compte" si dispo
+      const compte = Array.from(modeRadios).find(r => r.value === "Compte");
+      if (compte && !Array.from(modeRadios).some(r => r.checked)) compte.checked = true;
     }
-    if (motifSelect) motifSelect.addEventListener('change', updateFormFields);
+  }
 
-    // Initialisation au chargement
-    updateFormFields();
+  function syncBrut(motif) {
+    if (motif === "Salaire") {
+      brutField.disabled = false;
+      brutField.style.background = '';
+    } else {
+      brutField.disabled = true;
+      brutField.value = '';
+      brutField.style.background = '#f3f3f3';
+    }
+  }
 
-    // === Coloration des options spéciales et placement correct ===
-    const specialOrder = ["ASSO7", "CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7"];
-    const options = Array.from(quiSelect.options).filter(opt => opt.value !== "");
-    const normalOptions = options.filter(opt => !specialOrder.includes(opt.textContent.trim()));
-    const specialOptions = specialOrder.map(name => {
-        const opt = options.find(o => o.textContent.trim() === name);
-        if (opt) {
-            opt.style.fontWeight = 'bold';
-            if (name === "ASSO7") opt.style.color = 'black';
-            if (name === "CB ASSO7") opt.style.color = 'purple';
-            if (name === "CAISSE ASSO7") opt.style.color = 'green';
-            if (name === "TRESO ASSO7") opt.style.color = 'blue';
-        }
-        return opt;
-    }).filter(Boolean);
+  // ============= UI principale
+  function updateFormFields() {
+    const benef = (quiSelect.value || '').trim();
+    const motif = (motifSelect.value || '').trim();
 
-    // On reconstruit la liste dans l'ordre souhaité (optionnel mais plus propre)
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = '-- Sélectionner --';
-    const separator = document.createElement('option');
-    separator.disabled = true;
-    separator.textContent = '──────────';
+    // 1) Motifs autorisés selon benef
+    filterMotifs(isStructure(benef) ? benef : 'musicien');
 
-    quiSelect.innerHTML = '';
-    quiSelect.appendChild(defaultOption);
-    normalOptions.forEach(opt => quiSelect.appendChild(opt));
-    quiSelect.appendChild(separator);
-    specialOptions.forEach(opt => quiSelect.appendChild(opt));
+    // 2) Spé CAISSE ASSO7
+    lockEspecesIfCaisse(benef);
+
+    // 3) Brut
+    syncBrut(motif);
+
+    // 4) Crédit/Débit selon motif + verrouillage
+    if (motif === "Vente") {
+      setType('credit', false);            // libre, mais on oriente
+    } else if (motif === "Recette concert") {
+      setType('credit', true);             // imposé
+    } else if (motif === "Salaire") {
+      setType('debit', true);              // imposé
+    } else if (motif === "Frais") {
+      if (benef === "CB ASSO7" || benef === "CAISSE ASSO7") {
+        setType('debit', true);            // frais d'une structure = débit
+      } else {
+        setType('credit', true);           // frais d'un musicien = crédit
+      }
+    } else if (motif === "Remboursement frais divers") {
+      setType('debit', true);              // toujours débit
+    } else {
+      unlockType();
+      syncHiddenFromRadios();
+    }
+  }
+
+  // Listeners
+  quiSelect  .addEventListener('change', updateFormFields);
+  motifSelect.addEventListener('change', updateFormFields);
+  creditRadio.addEventListener('change', syncHiddenFromRadios);
+  debitRadio .addEventListener('change', syncHiddenFromRadios);
+
+  // Init
+  updateFormFields();
 }
 
 
@@ -188,14 +171,20 @@ if (motifSelect) {
    =============================== */
 
 function initConcertAutocomplete() {
-    const concertField = document.getElementById("concert_field");
-    const concertIdField = document.getElementById("concert_id");
-    const concertAutocomplete = document.getElementById("concert_autocomplete");
-    const calendarIcon = document.getElementById("calendar_icon");
-    const concertDatePicker = document.getElementById("concert_date_picker"); // input caché pour Flatpickr (concert lié)
-    const musicienSelect = document.getElementById("musicien");
-    const motifSelect = document.getElementById("motif");
-    const dateField = document.getElementById("date"); // champ date général
+  const concertField = document.getElementById("concert_field");
+  const concertIdField = document.getElementById("concert_id");
+  const concertAutocomplete = document.getElementById("concert_autocomplete");
+  const calendarIcon = document.getElementById("calendar_icon");
+  const concertDatePicker = document.getElementById("concert_date_picker");
+  const musicienSelect = document.getElementById("musicien");
+  const motifSelect = document.getElementById("motif");
+  const dateField = document.getElementById("date");
+
+
+
+  // ✅ une seule déclaration ici
+  const motifsQuiActivent = ["Frais", "Recette concert", "Remboursement frais divers"];
+
 
     // --- (Nouveau) Flatpickr sur champ date principal, en français ---
     if (dateField) {
@@ -223,40 +212,43 @@ function initConcertAutocomplete() {
     }
 
     // --- Filtres dynamiques (motif/musicien) ---
-    function refreshConcertField() {
-        const motif = motifSelect.value;
-        const musicien = musicienSelect.value;
-        const motifsQuiActivent = ["Frais", "Recette concert"];
-        if (
-            motifsQuiActivent.includes(motif) &&
-            window.concertsParMusicien &&
-            window.concertsParMusicien[musicien]
-        ) {
-            concerts = window.concertsParMusicien[musicien].map(c => ({
-                ...c,
-                dateFr: formatDate(c.date)
-            }));
-        } else {
-            concerts = allConcerts.slice();
-        }
-        if (concertDatePicker._flatpickr) {
-            concertDatePicker._flatpickr.set('enable', concerts.map(c => c.date));
-        }
-        if (motifsQuiActivent.includes(motif)) {
-            concertField.disabled = false;
-            concertField.style.backgroundColor = "";
-            calendarIcon.style.pointerEvents = "";
-            calendarIcon.style.opacity = "";
-        } else {
-            concertField.disabled = true;
-            concertField.value = "";
-            concertIdField.value = "";
-            concertField.style.backgroundColor = "#e9e9e9";
-            calendarIcon.style.pointerEvents = "none";
-            calendarIcon.style.opacity = "0.4";
-            concertAutocomplete.style.display = "none";
-        }
-    }
+	  function refreshConcertField() {
+		const motif = motifSelect.value;
+		const musicien = musicienSelect.value;
+
+		if (
+		  motifsQuiActivent.includes(motif) &&
+		  window.concertsParMusicien &&
+		  window.concertsParMusicien[musicien]
+		) {
+		  concerts = window.concertsParMusicien[musicien].map(c => ({
+			...c,
+			dateFr: formatDate(c.date)
+		  }));
+		} else {
+		  concerts = allConcerts.slice();
+		}
+
+		// ✅ guard flatpickr
+		if (concertDatePicker && concertDatePicker._flatpickr) {
+		  concertDatePicker._flatpickr.set('enable', concerts.map(c => c.date));
+		}
+
+		if (motifsQuiActivent.includes(motif)) {
+		  concertField.disabled = false;
+		  concertField.style.backgroundColor = "";
+		  calendarIcon.style.pointerEvents = "";
+		  calendarIcon.style.opacity = "";
+		} else {
+		  concertField.disabled = true;
+		  concertField.value = "";
+		  concertIdField.value = "";
+		  concertField.style.backgroundColor = "#e9e9e9";
+		  calendarIcon.style.pointerEvents = "none";
+		  calendarIcon.style.opacity = "0.4";
+		  concertAutocomplete.style.display = "none";
+		}
+	  }
 
     // --- (Nouveau) Remplit la date générale dès sélection concert ---
     function setDateFieldFromConcert(concert) {
@@ -427,47 +419,56 @@ function initFormValidation() {
         field.style.backgroundColor = "";
     }
 
-    form.addEventListener("submit", function (e) {
-        let valid = true;
+	form.addEventListener("submit", function (e) {
+	  let valid = true;
 
-        resetFieldStyle(montantField);
-        resetFieldStyle(brutField);
-        resetFieldStyle(concertField);
+	  resetFieldStyle(montantField);
+	  resetFieldStyle(brutField);
+	  resetFieldStyle(concertField);
 
-        const montant = montantField.value.trim();
-        const brut = brutField.value.trim();
-        const motif = motifField.value;
-        const concertId = concertIdField.value;
+	  // NEW — synchroniser le champ caché avec les radios
+	  const typeHidden  = document.getElementById("type_hidden");
+	  const creditRadio = document.getElementById("credit_radio");
+	  const debitRadio  = document.getElementById("debit_radio");
+	  if (typeHidden && creditRadio && debitRadio) {
+		if (debitRadio.checked)      typeHidden.value = "debit";
+		else if (creditRadio.checked) typeHidden.value = "credit";
+	  }
 
-        if (!montant) {
-            e.preventDefault();
-            alert("Veuillez indiquer un montant.");
-            markInvalid(montantField);
-            montantField.focus();
-            valid = false;
-            return;
-        }
+	  const montant   = montantField.value.trim();
+	  const brut      = brutField.value.trim();
+	  const motif     = motifField.value;
+	  const concertId = concertIdField.value;
 
-        if (motif === "Salaire" && !brut) {
-            e.preventDefault();
-            alert("Veuillez indiquer le montant brut pour une opération de type 'Salaire'.");
-            markInvalid(brutField);
-            brutField.focus();
-            valid = false;
-            return;
-        }
+	  if (!montant) {
+		e.preventDefault();
+		alert("Veuillez indiquer un montant.");
+		markInvalid(montantField);
+		montantField.focus();
+		valid = false;
+		return;
+	  }
 
-        if (motif === "Frais" && !concertId) {
-            e.preventDefault();
-            alert("Veuillez sélectionner un concert lié pour une opération de type 'Frais'.");
-            markInvalid(concertField);
-            concertField.focus();
-            valid = false;
-            return;
-        }
+	  if (motif === "Salaire" && !brut) {
+		e.preventDefault();
+		alert("Veuillez indiquer le montant brut pour une opération de type 'Salaire'.");
+		markInvalid(brutField);
+		brutField.focus();
+		valid = false;
+		return;
+	  }
 
-        return valid;
-    });
+	  if ((motif === "Frais" || motif === "Remboursement frais divers") && !concertId) {
+		e.preventDefault();
+		alert("Veuillez sélectionner un concert lié pour ce type d’opération.");
+		markInvalid(concertField);
+		concertField.focus();
+		valid = false;
+		return;
+	  }
+
+	  return valid;
+	});
 }
 
 /* ===============================

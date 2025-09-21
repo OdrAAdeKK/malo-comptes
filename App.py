@@ -1,4 +1,3 @@
-# 📦 Standard Python
 import os
 import json
 import locale
