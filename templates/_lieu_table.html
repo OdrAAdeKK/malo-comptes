@@ -1,0 +1,60 @@
+{# Reçoit: regions (liste ordonnée de libellés), grouped (dict region -> [Lieu]) #}
+
+{% for region in regions %}
+  <h2 class="mois-bandeau">{{ region }}</h2>
+
+  <table class="archived-table lieux-table">
+    <thead>
+      <tr>
+        <th>Nom du lieu</th>
+        <th>Ville</th>
+        <th>CP</th>
+        <th>Contacts</th>
+        <th>Note</th>
+        <th style="text-align:center;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in grouped.get(region, []) %}
+        <tr>
+          <td>
+            <a href="{{ url_for('fiche_lieu', lieu_id=l.id) }}"><strong>{{ l.nom }}</strong></a>
+            {% if l.organisme %}
+              <div class="muted-italic" style="font-size:.95em;">{{ l.organisme }}</div>
+            {% endif %}
+            {% if l.concerts is defined %}
+              <small class="muted-italic"> — {{ l.concerts|length }} concert{{ 's' if l.concerts|length != 1 }}</small>
+            {% endif %}
+          </td>
+          <td>{{ l.ville or '—' }}</td>
+          <td>{{ l.code_postal or '—' }}</td>
+          <td>
+            {% if l.contacts %}
+              <div style="white-space:pre-wrap;">{{ l.contacts }}</div>
+            {% else %}
+              {{ ([l.telephone, l.email] | select | list | join(' • ')) or '—' }}
+            {% endif %}
+          </td>
+          <td>
+            {% if l.note %}
+              {{ l.note[:120] }}{% if l.note|length > 120 %}…{% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td style="text-align:center; white-space:nowrap;">
+            <a class="icon-button orange" title="Modifier" href="{{ url_for('modifier_lieu', lieu_id=l.id) }}">
+              <i class="fas fa-pen"></i>
+            </a>
+            <form method="POST"
+                  action="{{ url_for('supprimer_lieu', lieu_id=l.id) }}"
+                  style="display:inline;"
+                  onsubmit="return confirm('Supprimer ce lieu ?');">
+              <button type="submit" class="icon-button red" title="Supprimer">🗑</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="muted-italic">Aucun lieu dans cette région.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endfor %}

@@ -1,0 +1,20 @@
+{# templates/_macros.html #}
+
+{%- macro render_concert_lieu(c, link=True) -%}
+  {# Récupère les morceaux #}
+  {%- set nom   = c.lieu_obj.nom if c.lieu_obj else c.lieu -%}
+  {%- set org   = c.lieu_obj.organisme if c.lieu_obj and c.lieu_obj.organisme else '' -%}
+  {%- set ville = c.lieu_obj.ville if c.lieu_obj and c.lieu_obj.ville else '' -%}
+
+  {# Concatène proprement sans utiliser "do" #}
+  {%- set txt = nom or '' -%}
+  {%- if org %}{% set txt = txt ~ ' — ' ~ org %}{% endif -%}
+  {%- if ville %}{% set txt = txt ~ ' — ' ~ ville %}{% endif -%}
+
+  {# Lien vers la fiche lieu si on a un lieu_id #}
+  {%- if link and c.lieu_id -%}
+    <a href="{{ url_for('fiche_lieu', lieu_id=c.lieu_id) }}">{{ txt }}</a>
+  {%- else -%}
+    {{ txt }}
+  {%- endif -%}
+{%- endmacro -%}

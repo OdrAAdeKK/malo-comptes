@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Importer des lieux (Google CSV){% endblock %}
+{% block content %}
+<div class="container" style="max-width:700px; margin-top:24px;">
+  <h1>Importer des lieux depuis Google Contacts (CSV)</h1>
+  <p class="muted-italic">Dans Google Contacts : Plus d’actions → Exporter → Format “Google CSV”.</p>
+  <form method="POST" action="{{ url_for('import_lieux_google_csv') }}" enctype="multipart/form-data"
+        style="display:flex; gap:10px; align-items:center; margin:14px 0;">
+    <input type="file" name="csv" accept=".csv" required>
+    <button type="submit" class="valider-button">Importer</button>
+  </form>
+  <div class="button-row" style="margin-top:12px;">
+    <a href="{{ url_for('liste_lieux') }}" class="back-button">← Retour</a>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% block title %}{{ lieu.nom }} — Fiche lieu{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lieux.css') }}">
+
+<div class="fiche">
+  <h1>{{ lieu.nom }}</h1>
+
+  <div class="card">
+    <div class="grid">
+      <div><strong>Ville</strong><br>{{ lieu.ville or '—' }}</div>
+      <div><strong>Code postal</strong><br>{{ lieu.code_postal or '—' }}</div>
+      <div><strong>Adresse</strong><br>{{ lieu.adresse or '—' }}</div>
+
+      <div><strong>Région</strong><br>{{ lieu.region }}</div>
+      <div><strong>Email</strong><br>{{ lieu.email or '—' }}</div>
+      <div><strong>Téléphone</strong><br>{{ lieu.telephone or '—' }}</div>
+
+      <!-- Organisme : éditable -->
+      <div style="grid-column:1/-1;">
+        <label for="organisme_input" style="font-weight:700;">Organisme</label>
+        <input id="organisme_input" type="text" value="{{ lieu.organisme or '' }}"
+               style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px;">
+        <small id="status_organisme" class="muted" style="display:inline-block; margin-top:4px;"></small>
+      </div>
+
+      <!-- Contacts : éditable -->
+      <div style="grid-column:1/-1;">
+        <label for="contacts_textarea" style="font-weight:700;">Contacts</label>
+        <textarea id="contacts_textarea" rows="3"
+                  style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; white-space:pre-wrap;">{{ lieu.contacts or '' }}</textarea>
+        <small id="status_contacts" class="muted" style="display:inline-block; margin-top:4px;"></small>
+      </div>
+
+      <!-- Note : éditable -->
+      <div style="grid-column:1/-1;">
+        <label for="note_textarea" style="font-weight:700;">Note</label>
+        <textarea id="note_textarea" rows="6"
+                  style="width:100%; padding:10px; border:1px solid #ccc; border-radius:6px; white-space:pre-wrap;">{{ lieu.note or '' }}</textarea>
+        <small id="status_note" class="muted" style="display:inline-block; margin-top:4px;"></small>
+      </div>
+    </div>
+
+    <!-- Boutons -->
+    <div class="button-row" style="margin-top:12px;">
+      <!-- Accueil (bleu France) -->
+      <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+
+      <!-- Retour (orange) : revient à la page précédente, sinon vers la liste des lieux -->
+      <a href="#"
+         class="retour-button"
+         onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('liste_lieux') }}'; }">
+         ⬅ Retour
+      </a>
+
+      <!-- Modifier (violet) -->
+      <a href="{{ url_for('modifier_lieu', lieu_id=lieu.id) }}" class="archives-button">Modifier</a>
+
+      <!-- Concerts à venir (bleu normal) -->
+      <a href="{{ url_for('liste_concerts') }}" class="a-venir-button">Concerts à venir</a>
+    </div>
+  </div>
+
+  <h2>Concerts liés ({{ concerts|length }})</h2>
+  {% if concerts %}
+    <table class="cons">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Libellé</th>
+          <th>Payé</th>
+          <th>Recette</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in concerts %}
+        <tr>
+          <td>{{ c.date.strftime('%d/%m/%Y') }}</td>
+          <td>
+            {# On affiche le libellé enregistré côté concert #}
+            {{ c.lieu }}
+          </td>
+          <td>{{ 'Oui' if c.paye else 'Non' }}</td>
+          <td>
+            {% if c.paye and c.recette is not none %}
+              {{ "{:,.2f}".format(c.recette).replace(',', ' ').replace('.', ',') }} €
+            {% elif c.recette_attendue is not none %}
+              <span class="muted">{{ "{:,.2f}".format(c.recette_attendue).replace(',', ' ').replace('.', ',') }} € (attendue)</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <a class="icon-button orange" title="Ouvrir"
+               href="{{ url_for('modifier_concert', concert_id=c.id) }}">
+              <i class="fas fa-pen"></i>
+            </a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">Aucun concert lié.</p>
+  {% endif %}
+</div>
+
+<!-- Autosave Organisme / Contacts / Note -->
+<script>
+(function () {
+  const LIEU_ID = {{ lieu.id }};
+  const $org  = document.getElementById('organisme_input');
+  const $cont = document.getElementById('contacts_textarea');
+  const $note = document.getElementById('note_textarea');
+
+  const $sOrg  = document.getElementById('status_organisme');
+  const $sCont = document.getElementById('status_contacts');
+  const $sNote = document.getElementById('status_note');
+
+  const saveUrl = "{{ url_for('api_lieu_autosave', lieu_id=lieu.id) }}";
+
+  const debounce = (fn, wait = 600) => {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
+  };
+
+  async function savePayload(payload, $status) {
+    try {
+      $status.textContent = 'Enregistrement…';
+      const res = await fetch(saveUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Erreur');
+      $status.textContent = 'Enregistré ✓';
+      setTimeout(() => { if ($status.textContent === 'Enregistré ✓') $status.textContent = ''; }, 1500);
+    } catch (e) {
+      console.error(e);
+      $status.textContent = 'Erreur d’enregistrement';
+      $status.style.color = '#c0392b';
+      setTimeout(() => { $status.textContent = ''; $status.style.color=''; }, 2500);
+    }
+  }
+
+  const saveOrganisme = debounce(() => savePayload({organisme: $org.value}, $sOrg));
+  const saveContacts  = debounce(() => savePayload({contacts:  $cont.value}, $sCont));
+  const saveNote      = debounce(() => savePayload({note:      $note.value}, $sNote));
+
+  // Autosave à la frappe (debounce) + immédiat au blur
+  [$org, $cont, $note].forEach((el, i) => {
+    const fns = [saveOrganisme, saveContacts, saveNote];
+    el.addEventListener('input', fns[i]);
+    el.addEventListener('blur', () => fns[i]()); // force un save immédiat
+  });
+
+  // Sauvegarde de sécurité si on quitte vite la page
+  window.addEventListener('beforeunload', () => {
+    try {
+      const payload = {
+        organisme: $org.value,
+        contacts:  $cont.value,
+        note:      $note.value
+      };
+      navigator.sendBeacon && navigator.sendBeacon(
+        saveUrl,
+        new Blob([JSON.stringify(payload)], { type: 'application/json' })
+      );
+    } catch(_) {}
+  });
+})();
+</script>
+{% endblock %}

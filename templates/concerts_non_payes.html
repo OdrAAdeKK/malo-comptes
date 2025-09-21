@@ -1,5 +1,9 @@
 {% extends 'base.html' %}
 
+{% import '_macros.html' as m %}
+
+
+
 {% block title %}Concerts non payés{% endblock %}
 {% block body_class %}big-mode{% endblock %}
 
@@ -28,7 +32,23 @@
             {% for concert in bloc["items"] %}
               <tr>
                 <td class="col-date">{{ concert.date.strftime('%d/%m/%Y') }}</td>
-                <td class="col-lieu">{{ concert.lieu }}</td>
+				{# Lieu cliquable si une fiche est liée #}
+				{% if concert.lieu_obj %}
+				  {% set lieu_label = concert.lieu_obj.nom
+					 ~ ((' — ' ~ concert.lieu_obj.organisme) if concert.lieu_obj.organisme else '')
+					 ~ ((' — ' ~ concert.lieu_obj.ville) if concert.lieu_obj.ville else '') %}
+				{% else %}
+				  {% set lieu_label = concert.lieu or '' %}
+				{% endif %}
+
+				<td class="col-lieu">
+				  {% if concert.lieu_id %}
+					<a class="link-lieu" href="{{ url_for('fiche_lieu', lieu_id=concert.lieu_id) }}">{{ lieu_label }}</a>
+				  {% else %}
+					{{ lieu_label }}
+				  {% endif %}
+				</td>
+
 
                 <td class="col-amount">
                   {# si pas de recette réelle, on affiche la recette_attendue (brut) #}
@@ -274,6 +294,11 @@ tr:hover { background-color: #f7f9ff; }
 .edit-button{ background:#f9a825; } .edit-button:hover{ background:#f57f17; }
 .delete-button{ background:#d32f2f; } .delete-button:hover{ background:#b71c1c; }
 .participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
+
+
+.link-lieu { text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+.link-lieu:hover { color: #0e6655; }
+
 </style>
 
 <style>

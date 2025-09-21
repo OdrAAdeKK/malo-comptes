@@ -2220,3 +2220,69 @@ COULEURS_MOIS = {
 }
 
 
+
+def region_from_cp(cp: str) -> str:
+    """
+    Retourne une région en MAJUSCULES depuis un code postal FR.
+    Bretagne priorisée ailleurs dans l'affichage, ici on mappe juste.
+    """
+    if not cp:
+        return "DIVERS"
+    s = str(cp).strip().replace(' ', '')
+    if len(s) < 2:
+        return "DIVERS"
+
+    # Corse : CP commence par 20xxx
+    if s.startswith('20'):
+        return "CORSE"
+
+    # Outre-mer
+    if s.startswith('97') or s.startswith('98'):
+        return "OUTRE-MER"
+
+    dep = s[:2]
+    # mapping départements -> régions (Métropole)
+    R = {
+        # AUVERGNE-RHÔNE-ALPES
+        '01':'AUVERGNE-RHÔNE-ALPES','03':'AUVERGNE-RHÔNE-ALPES','07':'AUVERGNE-RHÔNE-ALPES',
+        '15':'AUVERGNE-RHÔNE-ALPES','26':'AUVERGNE-RHÔNE-ALPES','38':'AUVERGNE-RHÔNE-ALPES',
+        '42':'AUVERGNE-RHÔNE-ALPES','43':'AUVERGNE-RHÔNE-ALPES','63':'AUVERGNE-RHÔNE-ALPES',
+        '69':'AUVERGNE-RHÔNE-ALPES','73':'AUVERGNE-RHÔNE-ALPES','74':'AUVERGNE-RHÔNE-ALPES',
+        # BOURGOGNE-FRANCHE-COMTÉ
+        '21':'BOURGOGNE-FRANCHE-COMTÉ','25':'BOURGOGNE-FRANCHE-COMTÉ','39':'BOURGOGNE-FRANCHE-COMTÉ',
+        '58':'BOURGOGNE-FRANCHE-COMTÉ','70':'BOURGOGNE-FRANCHE-COMTÉ','71':'BOURGOGNE-FRANCHE-COMTÉ',
+        '89':'BOURGOGNE-FRANCHE-COMTÉ','90':'BOURGOGNE-FRANCHE-COMTÉ',
+        # BRETAGNE
+        '22':'BRETAGNE','29':'BRETAGNE','35':'BRETAGNE','56':'BRETAGNE',
+        # CENTRE-VAL DE LOIRE
+        '18':'CENTRE-VAL DE LOIRE','28':'CENTRE-VAL DE LOIRE','36':'CENTRE-VAL DE LOIRE',
+        '37':'CENTRE-VAL DE LOIRE','41':'CENTRE-VAL DE LOIRE','45':'CENTRE-VAL DE LOIRE',
+        # GRAND EST
+        '08':'GRAND EST','10':'GRAND EST','51':'GRAND EST','52':'GRAND EST','54':'GRAND EST',
+        '55':'GRAND EST','57':'GRAND EST','67':'GRAND EST','68':'GRAND EST','88':'GRAND EST',
+        # HAUTS-DE-FRANCE
+        '02':'HAUTS-DE-FRANCE','59':'HAUTS-DE-FRANCE','60':'HAUTS-DE-FRANCE',
+        '62':'HAUTS-DE-FRANCE','80':'HAUTS-DE-FRANCE',
+        # ÎLE-DE-FRANCE
+        '75':'ÎLE-DE-FRANCE','77':'ÎLE-DE-FRANCE','78':'ÎLE-DE-FRANCE','91':'ÎLE-DE-FRANCE',
+        '92':'ÎLE-DE-FRANCE','93':'ÎLE-DE-FRANCE','94':'ÎLE-DE-FRANCE','95':'ÎLE-DE-FRANCE',
+        # NORMANDIE
+        '14':'NORMANDIE','27':'NORMANDIE','50':'NORMANDIE','61':'NORMANDIE','76':'NORMANDIE',
+        # NOUVELLE-AQUITAINE
+        '16':'NOUVELLE-AQUITAINE','17':'NOUVELLE-AQUITAINE','19':'NOUVELLE-AQUITAINE',
+        '23':'NOUVELLE-AQUITAINE','24':'NOUVELLE-AQUITAINE','33':'NOUVELLE-AQUITAINE',
+        '40':'NOUVELLE-AQUITAINE','47':'NOUVELLE-AQUITAINE','64':'NOUVELLE-AQUITAINE',
+        '79':'NOUVELLE-AQUITAINE','86':'NOUVELLE-AQUITAINE','87':'NOUVELLE-AQUITAINE',
+        # OCCITANIE
+        '09':'OCCITANIE','11':'OCCITANIE','12':'OCCITANIE','30':'OCCITANIE','31':'OCCITANIE',
+        '32':'OCCITANIE','34':'OCCITANIE','46':'OCCITANIE','48':'OCCITANIE','65':'OCCITANIE',
+        '66':'OCCITANIE','81':'OCCITANIE','82':'OCCITANIE',
+        # PAYS DE LA LOIRE
+        '44':'PAYS DE LA LOIRE','49':'PAYS DE LA LOIRE','53':'PAYS DE LA LOIRE',
+        '72':'PAYS DE LA LOIRE','85':'PAYS DE LA LOIRE',
+        # PROVENCE-ALPES-CÔTE D'AZUR
+        '04':'PROVENCE-ALPES-CÔTE D\'AZUR','05':'PROVENCE-ALPES-CÔTE D\'AZUR',
+        '06':'PROVENCE-ALPES-CÔTE D\'AZUR','13':'PROVENCE-ALPES-CÔTE D\'AZUR',
+        '83':'PROVENCE-ALPES-CÔTE D\'AZUR','84':'PROVENCE-ALPES-CÔTE D\'AZUR',
+    }
+    return R.get(dep, "DIVERS")

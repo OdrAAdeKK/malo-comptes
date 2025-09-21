@@ -1,0 +1,123 @@
+{% extends 'base.html' %}
+{% block title %}Lieux de concerts{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lieux.css') }}">
+
+<style>
+  /* ====== Mise en page dédiée aux lieux ====== */
+  .lieux-page{
+    max-width: 1220px;   /* un peu plus large pour tenir les 6 boutons */
+    width: 100%;
+    margin: 0 auto;      /* centre tout: titre, boutons, régions, tableaux */
+  }
+
+  /* Toolbar : une SEULE ligne, gras, et pas plus large que le conteneur */
+  .lieux-toolbar{
+    display: flex;
+    flex-wrap: nowrap;          /* reste sur une seule ligne */
+    gap: 16px;
+    margin: 12px 0 18px;
+    overflow-x: auto;           /* si l’écran est trop étroit, défilement horizontal */
+    padding-bottom: 4px;        /* petite marge pour le scroll bar éventuel */
+  }
+  .lieux-toolbar a{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 64px;
+    padding: 12px 20px;
+    border-radius: 18px;
+    text-decoration: none !important;
+    color: #fff !important;
+    font-weight: 700;           /* GRAS partout */
+    white-space: nowrap;        /* pas de retour à la ligne dans le texte */
+  }
+
+  /* Bandeau Région aligné avec le tableau */
+  .lieux-page .mois-bandeau{
+    margin: 26px 0 10px;
+    padding: 8px 12px;
+    background: #f0f0f0;
+    border-radius: 6px;
+    font-weight: 700;
+  }
+
+  /* Tableau : même largeur que le conteneur */
+  .lieux-page .archived-table.lieux-table{
+    width: 100%;
+    table-layout: fixed;
+    margin: 0 0 22px 0;
+  }
+
+  /* Ajuste légèrement les colonnes (un peu plus étroit qu’avant) */
+  .lieux-page .archived-table.lieux-table th:nth-child(1),
+  .lieux-page .archived-table.lieux-table td:nth-child(1){ /* Nom du lieu */
+    width: 27%;
+  }
+  .lieux-page .archived-table.lieux-table th:nth-child(4),
+  .lieux-page .archived-table.lieux-table td:nth-child(4){ /* Contacts */
+    width: 22%;
+  }
+
+  /* Ellipsis pour éviter les débordements disgracieux */
+  .lieux-page .archived-table.lieux-table td:nth-child(1),
+  .lieux-page .archived-table.lieux-table td:nth-child(4){
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Ligne de boutons de pied de page, calée au conteneur */
+  .lieux-page .footer-actions{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+  }
+</style>
+
+<div class="lieux-page">
+  <h1>Lieux de concerts</h1>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flashes" style="margin:10px 0 14px;">
+        {% for category, message in messages %}
+          <div class="flash {{ category }}" style="padding:10px 12px; border-radius:6px;
+               background:#e6f4ff; border:1px solid #b3daff; color:#084b83; margin-bottom:8px;">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Boutons de navigation (une seule ligne) -->
+  <div class="lieux-toolbar">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+
+    <a href="#"
+       class="retour-button"
+       onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('liste_concerts') }}'; }">
+       ⬅ Retour
+    </a>
+
+    <a class="valider-button" href="{{ url_for('creer_lieu') }}">+ Nouveau lieu</a>
+    <a class="a-venir-button" href="{{ url_for('liste_concerts') }}">Concerts à venir</a>
+
+    <!-- violet -->
+    <a class="archives-button" href="{{ url_for('import_lieux_google_csv_form') }}">Importer Google CSV</a>
+    <a class="archives-button" href="{{ url_for('export_lieux_google_csv') }}">Exporter Google CSV</a>
+  </div>
+
+  {# Liste par régions + tableaux #}
+  {% include '_lieu_table.html' %}
+
+  <!-- Boutons du bas, toujours dans le même conteneur -->
+  <div class="footer-actions">
+    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+    <a href="{{ url_for('liste_concerts') }}" class="archives-button">Concerts</a>
+  </div>
+</div>
+{% endblock %}

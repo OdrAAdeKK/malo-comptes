@@ -21,74 +21,96 @@ from exports import generer_export_excel
 from mes_utils import format_currency
 print("format_currency importé depuis mes_utils :", format_currency)
 
-
-
 # Chargement des variables d’environnement
 load_dotenv("env.txt")
 
-
-# Création de l'application Flask
+# ─────────────────────────────
+# Création de l'application
+# ─────────────────────────────
 app = Flask(__name__)
-app.jinja_env.filters['format_currency'] = format_currency
 app.secret_key = "kE9t#sgdFE35zgjKJlkj98_!9"
+app.jinja_env.filters['format_currency'] = format_currency
 
+# ─────────────────────────────
+# Base de données (URL unique, normalisée)
+# ─────────────────────────────
+def _compute_database_url() -> str:
+    # SQLite local (fallback)
+    sqlite_path = os.path.join(os.path.dirname(__file__), "instance", "musiciens.db")
+    sqlite_url = f"sqlite:///{sqlite_path}"
 
-# --- Pour le mode local SQLite
-db_path = os.path.join(os.path.dirname(__file__), "instance", "musiciens.db")
-sqlite_url = f"sqlite:///{db_path}"
+    url = (os.getenv('DATABASE_URL') or sqlite_url).strip()
 
-# Si DATABASE_URL n'est pas défini, on prend SQLite local
-database_url = os.getenv('DATABASE_URL', sqlite_url)
+    # Normaliser pour psycopg v3 (Render/Heroku, etc.)
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg://", 1)
+    elif url.startswith("postgresql://") and "+psycopg" not in url:
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-# Normaliser pour psycopg v3
-if database_url.startswith("postgres://"):
-    # Cas Heroku / anciennes URLs
-    database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
-elif database_url.startswith("postgresql://") and "+psycopg" not in database_url:
-    # Force l'URL à utiliser psycopg v3
-    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    # Ajouter sslmode=require si Postgres et absent
+    if url.startswith("postgresql+psycopg://") and "sslmode=" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
 
+    return url
+
+database_url = _compute_database_url()
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_pre_ping": True,      # ping avant chaque checkout pour éviter une connexion morte
-    "pool_recycle": 300,        # recycle les connexions > 5 min (évite timeouts/load balancer)
-    "pool_timeout": 30,
-    "pool_size": 5,
-    "max_overflow": 5,
-    "connect_args": {
-        "sslmode": "require",
-        # keepalives côté libpq (psycopg3) : aide à garder la connexion vivante
-        "keepalives": 1,
-        "keepalives_idle": 30,
-        "keepalives_interval": 10,
-        "keepalives_count": 5,
-    },
-}
 
+# Engine options (seulement utiles côté Postgres)
+engine_options = {"pool_pre_ping": True}
+if database_url.startswith("postgresql+psycopg://"):
+    engine_options.update({
+        "pool_recycle": 300,
+        "pool_timeout": 30,
+        "pool_size": 5,
+        "max_overflow": 5,
+        "connect_args": {
+            "sslmode": "require",
+            # keepalives côté libpq (psycopg3)
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 5,
+        },
+    })
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
 
-
-
-# Configuration mail
+# ─────────────────────────────
+# Mail
+# ─────────────────────────────
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))  # attention à bien caster en int
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'False') == 'True'
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
-
-# Initialisation des extensions
-from models import db
+# ─────────────────────────────
+# DB / Migrations / Mail init
+# ─────────────────────────────
+from models import db  # ⚠️ models.py doit faire: db = SQLAlchemy()
 db.init_app(app)
 migrate = Migrate(app, db)
 mail = Mail(app)
 
-print("Base utilisée :", database_url)
+print("Base utilisée :", app.config['SQLALCHEMY_DATABASE_URI'])
 
-# 📁 Modules internes
+# Crée les tables auto si on est en SQLite local (confort dev)
+if database_url.startswith("sqlite:///"):
+    instance_dir = os.path.join(os.path.dirname(__file__), "instance")
+    os.makedirs(instance_dir, exist_ok=True)
+    with app.app_context():
+        db.create_all()
 
-from models import Musicien, Concert, Participation, Operation, Cachet, Report
+# ─────────────────────────────
+# Imports des modèles après init_app
+# ─────────────────────────────
+from models import Musicien, Concert, Participation, Operation, Cachet, Report, Lieu
+
+# ─────────────────────────────
+# (le reste de tes imports internes)
+# ─────────────────────────────
 from mes_utils import (
     partage_benefices_concert, calculer_credit_actuel,
     calculer_gains_a_venir, calculer_credit_potentiel,
@@ -121,18 +143,6 @@ COULEURS_MOIS = {
     'août': '#FFEFC1',
 }
 
-
-
-uri = os.environ.get("DATABASE_URL", "")
-if uri.startswith("postgres://"):
-    # SQLAlchemy 2.x + psycopg3 préfèrent 'postgresql+psycopg://'
-    uri = uri.replace("postgres://", "postgresql+psycopg://", 1)
-
-# Ajoute sslmode=require si absent (Render Postgres le supporte)
-if uri and "sslmode=" not in uri:
-    uri += ("&" if "?" in uri else "?") + "sslmode=require"
-
-app.config["SQLALCHEMY_DATABASE_URI"] = uri or "sqlite:///local.db"
 
 # ------------ ROUTES DE BASE ------------
 
@@ -306,45 +316,74 @@ def liste_concerts():
 
 @app.route('/concert/ajouter', methods=['GET', 'POST'])
 def ajouter_concert():
-    if request.method == 'POST':
-        # Récupération des infos du formulaire
-        date_str = request.form['date']
-        lieu = request.form['lieu']
-        recette_str = request.form.get('recette')
-        recette = float(recette_str) if recette_str else None
-        paye = 'paye' in request.form
-        mode_paiement_prevu = request.form.get('mode_paiement_prevu', 'CB ASSO7')
+    from models import db, Lieu, Concert, Musicien, Operation
 
-        # (NEW) Frais prévisionnels saisis (peut être vide)
+    if request.method == 'POST':
+        # --- Date ("YYYY-MM-DD" ou "DD/MM/YYYY")
+        date_raw = (request.form.get('date') or '').strip()
+        if not date_raw:
+            flash("La date est obligatoire.", "warning")
+            return redirect(url_for('ajouter_concert'))
+        try:
+            if "/" in date_raw:
+                d, m, y = date_raw.split("/")
+                concert_date = datetime(int(y), int(m), int(d)).date()
+            else:
+                concert_date = datetime.strptime(date_raw, '%Y-%m-%d').date()
+        except Exception:
+            flash("Format de date invalide.", "danger")
+            return redirect(url_for('ajouter_concert'))
+
+        # --- LIEU : OBLIGATOIRE (via autocomplete/popup)
+        lieu_id_raw = (request.form.get('lieu_id') or '').strip()
+        if not lieu_id_raw.isdigit():
+            flash("Choisis ou crée un lieu (fiche) avant de valider.", "warning")
+            return redirect(url_for('ajouter_concert'))
+
+        lieu_obj = Lieu.query.get(int(lieu_id_raw))
+        if not lieu_obj:
+            flash("Lieu introuvable.", "danger")
+            return redirect(url_for('ajouter_concert'))
+
+        # --- Recette (tolère virgules & espaces)
+        recette_input = (request.form.get('recette') or '').replace(' ', '').replace(',', '.').strip()
+        recette = float(recette_input) if recette_input else None
+
+        # --- Statut & mode
+        paye = ('paye' in request.form) or (str(request.form.get('paye', '')).lower() in ('1','true','on','yes'))
+        mode_paiement_prevu = (request.form.get('mode_paiement_prevu') or 'CB ASSO7').strip()
+
+        # --- Frais prévisionnels saisis (peut être vide)
         frais_prev_str = (request.form.get('frais_previsionnels') or '').strip()
 
-        # Création du concert
+        # --- Création Concert (lieu_id obligatoire ; on peut conserver .lieu à titre d’affichage)
         concert = Concert(
-            date=datetime.strptime(date_str, '%Y-%m-%d').date(),
-            lieu=lieu,
+            date=concert_date,
+            lieu=lieu_obj.nom,          # affichage historique si besoin
+            lieu_id=lieu_obj.id,        # LIEN FORT
             paye=paye,
-            mode_paiement_prevu=mode_paiement_prevu
+            mode_paiement_prevu=mode_paiement_prevu or 'CB ASSO7'
         )
 
-        # Affectation correcte selon le statut "payé"
+        # Recette réelle vs attendue
         if paye:
             concert.recette = recette
+            concert.recette_attendue = None
         else:
             concert.recette_attendue = recette
+            concert.recette = None
 
         db.session.add(concert)
         db.session.commit()
-        db.session.refresh(concert)  # garantir concert.id
+        db.session.refresh(concert)
 
-        # (NEW) Si NON payé → créer/mettre à jour l'opération "Frais (prévisionnels)" liée
+        # --- Frais prévisionnels auto (si NON payé)
         if not paye:
-            # import local pour être 100% sûr même si l'import global a été oublié
             from mes_utils import ensure_op_frais_previsionnels
             ensure_op_frais_previsionnels(concert.id, frais_prev_str)
 
-        # Si payé, créer une opération de crédit (recette réelle)
+        # --- Si payé : créer l’opération de crédit "Recette concert"
         if paye and mode_paiement_prevu and recette:
-            from models import Musicien, Operation
             compte = Musicien.query.filter_by(nom=mode_paiement_prevu).first()
             if compte:
                 op = Operation(
@@ -352,18 +391,19 @@ def ajouter_concert():
                     type='credit',
                     motif='Recette concert',
                     montant=recette,
-                    date=datetime.strptime(date_str, '%Y-%m-%d').date(),
+                    date=concert_date,
                     concert_id=concert.id
                 )
                 db.session.add(op)
                 db.session.commit()
 
-        # Recalcul des crédits potentiels / à venir (si tu l'utilises)
+        # Recalculs
         from calcul_participations import mettre_a_jour_credit_calcule_potentiel
         mettre_a_jour_credit_calcule_potentiel()
 
         return redirect(url_for('liste_participations', concert_id=concert.id))
 
+    # GET
     return render_template('ajouter_concert.html')
 
 
@@ -790,6 +830,481 @@ def annuler_paiement_concert():
     except Exception as e:
         db.session.rollback()
         return jsonify(success=False, message=str(e)), 500
+
+
+# --- LIEUX (Programmateurs) -----------------------------------------------
+from collections import OrderedDict
+
+# ========= LIEUX: LISTE (régionnalisée) =========
+# tout en haut du fichier si pas déjà importé
+import unicodedata
+from collections import OrderedDict, defaultdict
+
+def _strip_accents(s: str) -> str:
+    s = unicodedata.normalize('NFD', s or '')
+    return ''.join(ch for ch in s if unicodedata.category(ch) != 'Mn')
+
+def _find_key_ci(d: dict, target_upper: str):
+    for k in d.keys():
+        if (k or '').strip().upper() == target_upper:
+            return k
+    return None
+
+@app.route('/lieux')
+def liste_lieux():
+    from models import Lieu
+
+    lieux = Lieu.query.all()
+
+    # buckets par région (on conserve le libellé tel quel pour l’affichage)
+    buckets = defaultdict(list)
+    for l in lieux:
+        label = (l.region or 'DIVERS').strip()
+        buckets[label].append(l)
+
+    # clés spéciales (case-insensitive)
+    bzh_key    = _find_key_ci(buckets, 'BRETAGNE')
+    divers_key = _find_key_ci(buckets, 'DIVERS')
+
+    # autres régions (hors Bretagne/Divers), triées A→Z sans accents
+    others = [
+        k for k in buckets.keys()
+        if k not in filter(None, [bzh_key, divers_key])
+    ]
+    others.sort(key=lambda k: _strip_accents(k.upper()))
+
+    # ordre final
+    ordered = OrderedDict()
+    if bzh_key:
+        ordered[bzh_key] = sorted(buckets[bzh_key], key=lambda x: (x.nom or '').lower())
+    for k in others:
+        ordered[k] = sorted(buckets[k], key=lambda x: (x.nom or '').lower())
+    if divers_key:
+        ordered[divers_key] = sorted(buckets[divers_key], key=lambda x: (x.nom or '').lower())
+
+    regions_ordered = list(ordered.keys())
+    return render_template('lieux.html', grouped=ordered, regions=regions_ordered)
+
+
+# ========= LIEU: CRÉER =========
+@app.route('/lieu/creer', methods=['GET','POST'])
+def creer_lieu():
+    from models import db, Lieu
+    if request.method == 'POST':
+        nom   = (request.form.get('nom') or '').strip()
+        ville = (request.form.get('ville') or '').strip()
+        cp    = (request.form.get('code_postal') or '').strip()
+
+        if not nom or not ville or not cp:
+            flash("Nom, Ville et Code postal sont requis.", "warning")
+            return redirect(url_for('creer_lieu'))
+
+        lieu = Lieu(
+            nom=nom,
+            organisme=(request.form.get('organisme') or '').strip() or None,   # NEW
+            ville=ville or None,
+            code_postal=cp or None,
+            adresse=(request.form.get('adresse') or '').strip() or None,
+            email=(request.form.get('email') or '').strip() or None,
+            telephone=(request.form.get('telephone') or '').strip() or None,
+            contacts=(request.form.get('contacts') or '').strip() or None,
+            note=(request.form.get('note') or '').strip() or None,
+        )
+        db.session.add(lieu)
+        db.session.commit()
+        flash("Lieu créé.", "success")
+        return redirect(url_for('liste_lieux'))
+
+    return render_template('lieu_form.html', lieu=None)
+
+
+# ========= LIEU: FICHE (consultation) =========
+@app.route('/lieu/<int:lieu_id>')
+def fiche_lieu(lieu_id):
+    from models import Lieu, Concert
+    lieu = Lieu.query.get_or_404(lieu_id)
+    concerts = (Concert.query
+                .filter_by(lieu_id=lieu.id)
+                .order_by(Concert.date.desc())
+                .all())
+    return render_template('fiche_lieu.html', lieu=lieu, concerts=concerts)
+
+
+# ========= LIEU: MODIFIER =========
+@app.route('/lieu/<int:lieu_id>/modifier', methods=['GET','POST'])
+def modifier_lieu(lieu_id):
+    from models import db, Lieu
+    lieu = Lieu.query.get_or_404(lieu_id)
+    if request.method == 'POST':
+        lieu.nom        = (request.form.get('nom') or '').strip() or lieu.nom
+        lieu.organisme  = (request.form.get('organisme') or '').strip() or None  # NEW
+        lieu.ville      = (request.form.get('ville') or '').strip() or lieu.ville
+        cp              = (request.form.get('code_postal') or '').strip()
+        lieu.code_postal= cp or None
+        lieu.adresse    = (request.form.get('adresse') or '').strip() or None
+        lieu.email      = (request.form.get('email') or '').strip() or None
+        lieu.telephone  = (request.form.get('telephone') or '').strip() or None
+        lieu.contacts   = (request.form.get('contacts') or '').strip() or None
+        lieu.note       = (request.form.get('note') or '').strip() or None
+
+        db.session.commit()
+        flash("Lieu modifié.", "success")
+        return redirect(url_for('liste_lieux'))
+    return render_template('lieu_form.html', lieu=lieu)
+
+
+# ========= LIEU: SUPPRIMER =========
+@app.route('/lieu/<int:lieu_id>/supprimer', methods=['POST'])
+def supprimer_lieu(lieu_id):
+    from models import db, Lieu, Concert
+    lieu = Lieu.query.get_or_404(lieu_id)
+
+    # Sécurité: refuser si des concerts y sont rattachés
+    count = Concert.query.filter_by(lieu_id=lieu.id).count()
+    if count > 0:
+        flash("Impossible de supprimer ce lieu : des concerts y sont rattachés.", "warning")
+        return redirect(url_for('liste_lieux'))
+
+    db.session.delete(lieu)
+    db.session.commit()
+    flash("Lieu supprimé.", "success")
+    return redirect(url_for('liste_lieux'))
+
+
+# ========= API: recherche autocomplete (nom commence par q) =========
+@app.get('/api/lieux/search')
+def api_lieux_search():
+    from models import Lieu
+    q = (request.args.get('q') or '').strip()
+    if not q:
+        return jsonify([])
+
+    items = (Lieu.query
+             .filter(Lieu.nom.ilike(f"{q}%"))
+             .order_by(Lieu.nom.asc())
+             .limit(20)
+             .all())
+
+    return jsonify([
+        {
+            "id": l.id,
+            "nom": l.nom,
+            "ville": l.ville,
+            "code_postal": l.code_postal
+        }
+        for l in items
+    ])
+
+
+# ========= API: création rapide (AJAX modal depuis Ajouter concert) =========
+@app.post('/api/lieux')
+@app.post('/api/lieux')
+def api_lieux_create():
+    from models import db, Lieu
+    data        = request.get_json(silent=True) or {}
+    nom         = (data.get('nom') or '').strip()
+    ville       = (data.get('ville') or '').strip()
+    code_postal = (data.get('code_postal') or '').strip()
+
+    if not nom or not ville or not code_postal:
+        return jsonify({"success": False, "message": "Nom, ville et code postal requis."}), 400
+
+    lieu = Lieu(
+        nom=nom,
+        organisme=(data.get('organisme') or '').strip() or None,   # NEW
+        ville=ville or None,
+        code_postal=code_postal or None,
+        adresse=(data.get('adresse') or '').strip() or None,
+        email=(data.get('email') or '').strip() or None,
+        telephone=(data.get('telephone') or '').strip() or None,
+        contacts=(data.get('contacts') or '').strip() or None,
+        note=(data.get('note') or '').strip() or None,
+    )
+    db.session.add(lieu)
+    db.session.commit()
+    return jsonify({"success": True, "lieu": {
+        "id": lieu.id, "nom": lieu.nom, "ville": lieu.ville, "code_postal": lieu.code_postal
+    }})
+
+# --- API: mise à jour "note" d'un lieu (autosave depuis fiche) ---
+@app.post('/api/lieux/<int:lieu_id>/note')
+def api_lieu_update_note(lieu_id):
+    from models import db, Lieu
+    lieu = Lieu.query.get_or_404(lieu_id)
+    data = request.get_json(silent=True) or {}
+
+    # on accepte chaîne vide (devient None)
+    new_note = (data.get('note') or '')
+    lieu.note = new_note.strip() or None
+
+    db.session.add(lieu)
+    db.session.commit()
+    return jsonify({"success": True})
+
+# --- AUTOSAVE sur fiche Lieu (note / contacts / organisme) -------------------
+@app.route('/api/lieux/<int:lieu_id>/autosave', methods=['PATCH', 'POST'])
+def api_lieu_autosave(lieu_id):
+    from models import db, Lieu
+    lieu = Lieu.query.get_or_404(lieu_id)
+    data = request.get_json(silent=True) or {}
+
+    allowed = ('note', 'contacts', 'organisme')
+    changed = []
+    for k in allowed:
+        if k in data:
+            val = (data.get(k) or '').strip() or None
+            setattr(lieu, k, val)
+            changed.append(k)
+
+    if not changed:
+        return jsonify({"success": False, "message": "Aucun champ autorisé fourni."}), 400
+
+    db.session.add(lieu)
+    db.session.commit()
+    return jsonify({"success": True, "changed": changed})
+
+# --- EXPORT LIEUX -> Google Contacts CSV ------------------------------------
+import csv, io
+from flask import Response
+
+
+# --- IMPORT Google Contacts CSV -> LIEUX -------------------------------------
+from werkzeug.utils import secure_filename
+import csv
+
+@app.get('/lieux/import/google_csv')
+def import_lieux_google_csv_form():
+    # Affiche un simple formulaire d’upload
+    return render_template('import_lieux_google_csv.html')
+
+@app.post('/lieux/import/google_csv')
+def import_lieux_google_csv():
+    import re
+    from models import db, Lieu
+
+    file = request.files.get('csv')
+    if not file:
+        flash("Aucun fichier reçu.", "warning")
+        return redirect(url_for('import_lieux_google_csv_form'))
+
+    filename = secure_filename(file.filename or "")
+    if not filename.lower().endswith('.csv'):
+        flash("Merci d'importer un fichier CSV exporté depuis Google Contacts.", "warning")
+        return redirect(url_for('import_lieux_google_csv_form'))
+
+    # ---- Decode (UTF-8 with BOM, UTF-8, Latin-1 fallback)
+    raw = file.read()
+    text = None
+    for enc in ('utf-8-sig', 'utf-8', 'latin-1'):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        flash("Impossible de décoder le fichier CSV (encodage inconnu).", "danger")
+        return redirect(url_for('import_lieux_google_csv_form'))
+
+    reader = csv.DictReader(io.StringIO(text))
+
+    # ---------- Helpers
+    def pick(row, names):
+        """Pick first non-empty value whose header matches one of names (case-insensitive),
+           first exact, then prefix matching (for 'E-mail 1 - Value', etc.)."""
+        if not row:
+            return ""
+        names_l = [n.strip().lower() for n in names]
+        # exact
+        for k, v in row.items():
+            if v and (k or "").strip().lower() in names_l:
+                return v.strip()
+        # prefix
+        for k, v in row.items():
+            if v and any((k or "").strip().lower().startswith(n) for n in names_l):
+                return v.strip()
+        return ""
+
+    def first_token(val: str) -> str:
+        """Collapse multi-fields like 'X ::: X ::: Y' – keep first non-empty token."""
+        if not val:
+            return ""
+        # split on " ::: " or " | " or " ; " variants
+        parts = re.split(r'\s*:::\s*|\s*\|\s*|\s*;\s*', val)
+        for p in parts:
+            p = p.strip()
+            if p:
+                return p
+        return ""
+
+    def extract_cp(val: str) -> str | None:
+        """Return a 5-digit French CP if present; else first_token truncated to 10; else None."""
+        t = first_token(val)
+        if not t:
+            return None
+        m = re.search(r'\b(\d{5})\b', t)
+        if m:
+            return m.group(1)
+        return t[:10]  # hard cap to DB length
+
+    def cap(val: str | None, n: int) -> str | None:
+        """Trim to column max length; keep None if empty."""
+        if not val:
+            return None
+        v = val.strip()
+        return v[:n] if len(v) > n else v
+
+    created, updated, skipped = 0, 0, 0
+
+    for row in reader:
+        # --- Read Google fields (EN + a few FR aliases)
+        first  = pick(row, ["First Name", "Given Name", "Prénom"])
+        last   = pick(row, ["Last Name", "Family Name", "Nom"])
+        name   = pick(row, ["Name", "Nom"])
+        org    = pick(row, ["Organization Name", "Organization 1 - Name", "Entreprise", "Société"])
+        email  = pick(row, ["E-mail 1 - Value", "E-mail - Value", "Adresse e-mail 1 - Valeur"])
+        phone  = pick(row, ["Phone 1 - Value", "Phone - Value", "Téléphone 1 - Valeur"])
+
+        street = pick(row, ["Address 1 - Street", "Address - Street", "Adresse 1 - Rue", "Adresse"])
+        city   = pick(row, ["Address 1 - City", "Address - City", "Ville", "Adresse 1 - Ville"])
+        postal = pick(row, ["Address 1 - Postal Code", "Address - Postal Code", "Code postal", "Adresse 1 - Code postal"])
+        notes  = pick(row, ["Notes", "Remarques"])
+
+        fullname = " ".join([first, last]).strip() or name
+
+        # ----- CCAS rules
+        is_ccas_contact = "ccas" in (fullname or "").lower()
+        organisme = "CCAS" if is_ccas_contact else (org or None)
+
+        # Nom du lieu: if CCAS found in contact → use fullname; else org, else fullname
+        nom_lieu_raw = (fullname if is_ccas_contact else (org or fullname)).strip() if (org or fullname) else ""
+        if not nom_lieu_raw:
+            skipped += 1
+            continue
+
+        # ----- Clean / collapse multi-values and cap to DB sizes
+        nom_lieu   = cap(nom_lieu_raw, 160)
+        organisme  = cap(organisme, 160)
+        ville      = cap(first_token(city), 120)
+        code_postal= cap(extract_cp(postal), 10)
+        adresse    = cap(first_token(street), 255)
+        telephone  = cap(first_token(phone), 80)
+        email      = cap(first_token(email), 255)
+
+        contacts_lines = []
+        if fullname:
+            contacts_lines.append(fullname)
+        if telephone:
+            contacts_lines.append(f"Tel: {telephone}")
+        if email:
+            contacts_lines.append(f"Email: {email}")
+        contacts_text = "\n".join(contacts_lines) if contacts_lines else None
+
+        note_text = notes or None
+
+        # ----- Dedup on (nom, ville) case-insensitive (treat None as "")
+        qville = (ville or "").lower()
+
+        # avoid autoflush of previous rows while we check duplicates
+        with db.session.no_autoflush:
+            existing = (Lieu.query
+                        .filter(db.func.lower(Lieu.nom) == nom_lieu.lower(),
+                                db.func.lower(db.func.coalesce(Lieu.ville, "")) == qville)
+                        .first())
+
+        if existing:
+            changed = False
+
+            def upd(attr, val):
+                nonlocal changed
+                if val and getattr(existing, attr) != val:
+                    setattr(existing, attr, val)
+                    changed = True
+
+            upd("organisme",   organisme)
+            upd("ville",       ville)
+            upd("code_postal", code_postal)
+            upd("adresse",     adresse)
+            upd("telephone",   telephone)
+            upd("email",       email)
+            if contacts_text and (existing.contacts or "").strip() != contacts_text:
+                existing.contacts = contacts_text
+                changed = True
+            if note_text and (existing.note or "").strip() != note_text:
+                existing.note = note_text
+                changed = True
+
+            updated += 1 if changed else 0
+            skipped += 0 if changed else 1
+        else:
+            db.session.add(Lieu(
+                nom=nom_lieu,
+                organisme=organisme,
+                ville=ville,
+                code_postal=code_postal,
+                adresse=adresse,
+                telephone=telephone,
+                email=email,
+                contacts=contacts_text,
+                note=note_text,
+            ))
+            created += 1
+
+    db.session.commit()
+    flash(f"Import terminé : {created} créés, {updated} mis à jour, {skipped} ignorés.", "success")
+    return redirect(url_for('liste_lieux'))
+
+
+@app.get('/lieux/export/google_csv')
+def export_lieux_google_csv():
+    import csv, io
+    from datetime import datetime
+    from flask import send_file
+    from models import Lieu
+
+    lieux = Lieu.query.order_by(Lieu.nom.asc()).all()
+
+    headers = [
+        "Name", "Given Name", "Family Name",
+        "Organization 1 - Name",
+        "E-mail 1 - Value",
+        "Phone 1 - Value",
+        "Address 1 - Street",
+        "Address 1 - City",
+        "Address 1 - Postal Code",
+        "Address 1 - Country",
+        "Notes"
+    ]
+
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=headers)
+    w.writeheader()
+
+    for l in lieux:
+        w.writerow({
+            "Name": l.nom or "",
+            "Given Name": "",
+            "Family Name": "",
+            "Organization 1 - Name": (l.organisme or l.nom or ""),
+            "E-mail 1 - Value": l.email or "",
+            "Phone 1 - Value": l.telephone or "",
+            "Address 1 - Street": l.adresse or "",
+            "Address 1 - City": l.ville or "",
+            "Address 1 - Postal Code": l.code_postal or "",
+            "Address 1 - Country": "France",
+            "Notes": ((l.contacts or "") + (("\n\n" + l.note) if l.note else ""))
+        })
+
+    out = io.BytesIO(buf.getvalue().encode('utf-8-sig'))
+    filename = f"lieux_google_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+    return send_file(
+        out,
+        mimetype="text/csv; charset=utf-8",
+        as_attachment=True,
+        download_name=filename
+    )
+
+
+
 
 
 # --------- CRUD PARTICIPATIONS ---------

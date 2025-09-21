@@ -1,4 +1,9 @@
 {% extends 'base.html' %}
+
+{% import '_macros.html' as m %}
+
+
+
 {% block title %}Concerts archivés - Saison {{ saison }}{% endblock %}
 {% block body_class %}big-mode{% endblock %}
 
@@ -25,7 +30,23 @@
           {% for concert in bloc["items"] %}
             <tr>
               <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
-              <td>{{ concert.lieu }}</td>
+			{# Lieu cliquable si une fiche est liée #}
+			{% if concert.lieu_obj %}
+			  {% set lieu_label = concert.lieu_obj.nom
+				 ~ ((' — ' ~ concert.lieu_obj.organisme) if concert.lieu_obj.organisme else '')
+				 ~ ((' — ' ~ concert.lieu_obj.ville) if concert.lieu_obj.ville else '') %}
+			{% else %}
+			  {% set lieu_label = concert.lieu or '' %}
+			{% endif %}
+
+			<td class="col-lieu">
+			  {% if concert.lieu_id %}
+				<a class="link-lieu" href="{{ url_for('fiche_lieu', lieu_id=concert.lieu_id) }}">{{ lieu_label }}</a>
+			  {% else %}
+				{{ lieu_label }}
+			  {% endif %}
+			</td>
+
               <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
               <td>{{ concert.frais | format_currency if concert.frais is not none else '' }}</td>
               <td style="text-align:center;">
@@ -125,6 +146,11 @@
   .adjust-button{ background:#6d28d9; }        .adjust-button:hover{ background:#5b21b6; }
   .edit-button{ background:#f9a825; }          .edit-button:hover{ background:#f57f17; }
   .participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
+  
+  
+  .link-lieu { text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+.link-lieu:hover { color: #0e6655; }
+
 </style>
 
 <script>

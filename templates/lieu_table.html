@@ -1,0 +1,58 @@
+{# templates/_lieu_table.html
+   Attend dans le contexte : grouped (dict region -> [lieux]), regions (liste ordonnée) #}
+
+<div class="lieux-container">
+  <div class="actions">
+    <a class="valider-button btn-new" href="{{ url_for('creer_lieu') }}">+ Nouveau lieu</a>
+  </div>
+
+  {% if regions %}
+    {% for region in regions %}
+      <div class="r-header">{{ region }}</div>
+      <table class="lieux">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Ville</th>
+            <th>CP</th>
+            <th>Contacts</th>
+            <th>Email / Téléphone</th>
+            <th>Note</th>
+            <th class="nowrap">Concerts</th>
+            <th class="nowrap" style="text-align:center;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in grouped.get(region, []) %}
+            <tr>
+              <td><a href="{{ url_for('fiche_lieu', lieu_id=l.id) }}"><strong>{{ l.nom }}</strong></a></td>
+              <td>{{ l.ville or '—' }}</td>
+              <td class="nowrap">{{ l.code_postal or '—' }}</td>
+              <td class="muted">{{ l.contacts or '—' }}</td>
+              <td>
+                {% if l.email %}📧 {{ l.email }}<br>{% endif %}
+                {% if l.telephone %}📞 {{ l.telephone }}{% endif %}
+                {% if not l.email and not l.telephone %}—{% endif %}
+              </td>
+              <td class="note-cell" title="{{ l.note or '' }}">{{ l.note or '—' }}</td>
+              <td class="nowrap">{{ (l.concerts | length) or 0 }}</td>
+              <td class="nowrap" style="text-align:center;">
+                <a class="icon-button orange" title="Modifier" href="{{ url_for('modifier_lieu', lieu_id=l.id) }}">
+                  <i class="fas fa-pen"></i>
+                </a>
+                <form method="POST" action="{{ url_for('supprimer_lieu', lieu_id=l.id) }}" style="display:inline;"
+                      onsubmit="return confirm('Supprimer ce lieu ?');">
+                  <button type="submit" class="icon-button red" title="Supprimer">
+                    <i class="fas fa-trash"></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endfor %}
+  {% else %}
+    <p class="muted">Aucun lieu enregistré.</p>
+  {% endif %}
+</div>

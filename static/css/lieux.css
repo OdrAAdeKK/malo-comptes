@@ -1,0 +1,51 @@
+.lieux-container { max-width: 1200px; margin: 0 auto; }
+.actions { display:flex; gap:.5rem; justify-content:flex-end; }
+.btn-new { margin: 12px 0 18px; }
+table.lieux { width:100%; border-collapse:collapse; }
+table.lieux th, table.lieux td { border:1px solid #e5e7eb; padding:10px 12px; vertical-align:top; }
+table.lieux thead th { background:#f8fafc; }
+.r-header { margin-top:28px; margin-bottom:8px; font-weight:800; font-size:1.2rem; }
+.muted { color:#6b7280; font-style:italic; }
+.nowrap { white-space:nowrap; }
+.note-cell { max-width: 36ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Form / fiche */
+.form-wrap { max-width: 800px; margin: 0 auto; }
+.grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+.grid-1 { display:grid; grid-template-columns: 1fr; gap:16px; }
+label { font-weight:600; }
+input, textarea { width:100%; padding:10px; border:1px solid #e5e7eb; border-radius:8px; }
+textarea { min-height: 120px; }
+
+.fiche { max-width: 1000px; margin: 0 auto; }
+.card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; margin-bottom:16px; }
+table.cons { width:100%; border-collapse:collapse; }
+table.cons th, table.cons td { border:1px solid #e5e7eb; padding:8px 10px; }
+table.cons thead th { background:#f8fafc; }
+/* ---- Fiche lieu > tableau "Concerts liés" ---- */
+.fiche table.cons {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fiche table.cons thead th {
+  background-color: #26bfa6 !important;  /* same teal as other tables */
+  color: #fff !important;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.fiche table.cons td {
+  padding: 10px 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.fiche table.cons tbody tr:nth-child(even) {
+  background: #f9f9f9;
+}
+
+.fiche table.cons td:last-child,
+.fiche table.cons th:last-child {
+  text-align: center;
+  white-space: nowrap;
+}

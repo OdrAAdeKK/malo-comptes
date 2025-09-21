@@ -337,20 +337,39 @@ def mettre_a_jour_credit_calcule_potentiel() -> None:
     Back-compat: recalcul global attendu par mes_utils.py
       - Concerts NON PAYÉS  -> écrit POTENTIEL ajusté
       - Concerts PAYÉS      -> écrit RÉEL ajusté (et remet POTENTIEL à 0)
+
+    Robustesse : ignore les concerts qui lèvent une ValueError (ex: gains fixés > total)
+    et continue avec les autres ; loggue les erreurs inattendues.
     """
+    import logging
+    from models import Concert  # import local pour éviter d’éventuels cycles
+
+    logger = logging.getLogger(__name__)
+
     # NON PAYÉS
     non_payes = Concert.query.filter(Concert.paye.is_(False)).all()
     print(f"\n🔍 Concerts non payés : {len(non_payes)}")
     for c in non_payes:
-        mettre_a_jour_credit_calcule_potentiel_pour_concert(c.id)
+        try:
+            mettre_a_jour_credit_calcule_potentiel_pour_concert(c.id)
+        except ValueError as e:
+            logger.warning("Recalc POTENTIEL ignoré (concert %s) : %s", c.id, e)
+        except Exception:
+            logger.exception("Recalc POTENTIEL : erreur inattendue sur concert %s", c.id)
 
     # PAYÉS
     payes = Concert.query.filter(Concert.paye.is_(True)).all()
     print(f"💰 Concerts payés : {len(payes)}")
     for c in payes:
-        mettre_a_jour_credit_calcule_reel_pour_concert(c.id)
+        try:
+            mettre_a_jour_credit_calcule_reel_pour_concert(c.id)
+        except ValueError as e:
+            logger.warning("Recalc RÉEL ignoré (concert %s) : %s", c.id, e)
+        except Exception:
+            logger.exception("Recalc RÉEL : erreur inattendue sur concert %s", c.id)
 
     print("✅ Mise à jour des crédits potentiels et réels terminée.")
+
 
 def _partage_with_previsionnels_if_needed(concert):
     """

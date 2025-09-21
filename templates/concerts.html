@@ -1,5 +1,7 @@
 {% extends 'base.html' %}
 
+{% import '_macros.html' as m %}
+
 {% block title %}Concerts à venir{% endblock %}
 {% block body_class %}big-mode{% endblock %}
 
@@ -31,7 +33,23 @@
         {% for concert in bloc['items'] %}
           <tr>
             <td class="col-date">{{ concert.date.strftime('%d/%m/%Y') }}</td>
-            <td class="col-lieu">{{ concert.lieu }}</td>
+			{# Lieu cliquable si une fiche est liée #}
+			{% if concert.lieu_obj %}
+			  {% set lieu_label = concert.lieu_obj.nom
+				 ~ ((' — ' ~ concert.lieu_obj.organisme) if concert.lieu_obj.organisme else '')
+				 ~ ((' — ' ~ concert.lieu_obj.ville) if concert.lieu_obj.ville else '') %}
+			{% else %}
+			  {% set lieu_label = concert.lieu or '' %}
+			{% endif %}
+
+			<td class="col-lieu">
+			  {% if concert.lieu_id %}
+				<a class="link-lieu" href="{{ url_for('fiche_lieu', lieu_id=concert.lieu_id) }}">{{ lieu_label }}</a>
+			  {% else %}
+				{{ lieu_label }}
+			  {% endif %}
+			</td>
+
 
             {# --- Recette attendue (toujours) + éventuelle note "réel" --- #}
             <td class="col-amount">
@@ -132,6 +150,7 @@
     <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
     <a href="{{ url_for('archives_concerts') }}" class="archives-button">Archives</a>
     <a href="{{ url_for('concerts_non_payes_view') }}" class="nonpayes-button">Non payés</a>
+	<a href="{{ url_for('liste_lieux') }}" class="a-venir-button">Lieux</a>
     <a href="{{ url_for('ajouter_concert') }}" class="add-button">+ Ajouter un concert</a>
   </div>
 </div>
@@ -174,6 +193,10 @@
   .participation-button { background-color: #4285f4; } .participation-button:hover { background-color: #3367d6; }
 
   .subnote { font-size: .85em; color:#888; }
+  
+  .link-lieu { text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+.link-lieu:hover { color: #0e6655; }
+
 </style>
 
 <script>

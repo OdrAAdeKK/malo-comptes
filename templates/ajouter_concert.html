@@ -10,8 +10,32 @@
   <label for="date">Date</label>
   <input type="date" name="date" required>
 
-  <label for="lieu">Lieu</label>
-  <input type="text" name="lieu" required>
+<!-- Sélection de lieu (autocomplete) -->
+<div class="form-row-flex">
+  <div style="flex:2;">
+    <label for="lieu_label">Lieu (fiche) — tape les premières lettres</label>
+    <div style="position:relative;">
+      <input type="text" id="lieu_label" placeholder="Ex: Théâtre…" autocomplete="off">
+      <div id="lieu_suggest" class="autocomplete-list" style="display:none; position:absolute; left:0; right:0; z-index:10; background:#fff; border:1px solid #bbb; border-radius:0 0 8px 8px; max-height:200px; overflow:auto;"></div>
+    </div>
+    <input type="hidden" name="lieu_id" id="lieu_id">
+  </div>
+  <div style="flex:1;">
+    <label>&nbsp;</label>
+    <button type="button" class="valider-button" id="btn_new_lieu">+ Nouveau lieu</button>
+  </div>
+</div>
+
+
+
+<!-- (optionnel) champ 'lieu' texte brut (legacy) -->
+<div class="form-row-flex">
+  <div style="flex:1;">
+    <label for="lieu">Libellé lieu (texte)</label>
+    <input type="text" name="lieu" id="lieu" value="">
+    <small class="muted-italic">Si tu sélectionnes une fiche, ce champ peut rester vide.</small>
+  </div>
+</div>
 
   <label for="recette">Recette (€)</label>
   <input type="number" step="0.01" name="recette">
@@ -61,6 +85,7 @@
 
 </div>
 
+
 <dialog id="popupPaiement">
   <form method="dialog" id="popupForm">
     <h3>Choisissez le compte de paiement</h3>
@@ -79,6 +104,34 @@
     <input type="hidden" id="concertIdPopup" value="">
   </form>
 </dialog>
+
+<!-- Modal création rapide de lieu -->
+<div id="modal_lieu" class="modal" style="display:none;">
+  <div class="modal-content">
+    <span class="close" id="modal_lieu_close">&times;</span>
+    <h2>Nouveau lieu</h2>
+    <div class="form-row-flex">
+      <div><label>Nom *</label><input type="text" id="nl_nom"></div>
+      <div><label>Ville *</label><input type="text" id="nl_ville"></div>
+    </div>
+    <div class="form-row-flex">
+      <div><label>Code postal *</label><input type="text" id="nl_cp"></div>
+      <div><label>Adresse</label><input type="text" id="nl_adresse"></div>
+    </div>
+    <div class="form-row-flex">
+      <div><label>Téléphone</label><input type="text" id="nl_tel"></div>
+      <div><label>Email</label><input type="email" id="nl_mail"></div>
+    </div>
+    <div><label>Contacts</label><textarea id="nl_contacts" rows="3"></textarea></div>
+    <div><label>Note</label><textarea id="nl_note" rows="4"></textarea></div>
+    <div class="button-row" style="margin-top:10px;">
+      <button class="valider-button" id="nl_save">Valider</button>
+      <button class="retour-button" id="nl_cancel">Annuler</button>
+    </div>
+  </div>
+</div>
+
+
 
 <script>
 let compteChoisi = null;
@@ -114,6 +167,100 @@ function fermerPopupPaiement() {
   document.getElementById('popupPaiement').close();
 }
 </script>
+
+<script>
+(function() {
+  const inp = document.getElementById('lieu_label');
+  const box = document.getElementById('lieu_suggest');
+  const hid = document.getElementById('lieu_id');
+  const legacy = document.getElementById('lieu');
+
+  const newBtn = document.getElementById('btn_new_lieu');
+  const modal  = document.getElementById('modal_lieu');
+  const mClose = document.getElementById('modal_lieu_close');
+  const mSave  = document.getElementById('nl_save');
+  const mCancel= document.getElementById('nl_cancel');
+
+  function hideSuggest(){ box.style.display='none'; box.innerHTML=''; }
+  function showSuggest(){ box.style.display='block'; }
+
+  // --- Autocomplete (préfixe du nom)
+  let timer = null;
+  inp.addEventListener('input', () => {
+    const q = inp.value.trim();
+    hid.value = '';
+    if (!q || q.length < 1) { hideSuggest(); return; }
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      fetch(`/api/lieux/search?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(list => {
+          box.innerHTML = '';
+          if (!list || list.length === 0) { hideSuggest(); return; }
+          list.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'autocomplete-item';
+            div.textContent = `${item.nom} — ${item.ville || ''} ${item.code_postal || ''}`.trim();
+            div.addEventListener('mousedown', () => {
+              inp.value = item.nom;
+              hid.value = item.id;
+              if (legacy) legacy.value = ''; // si on choisit une fiche, on vide le texte libre
+              hideSuggest();
+            });
+            box.appendChild(div);
+          });
+          showSuggest();
+        })
+        .catch(() => hideSuggest());
+    }, 160);
+  });
+  inp.addEventListener('blur', () => setTimeout(hideSuggest, 120));
+  inp.addEventListener('focus', () => { if (box.innerHTML.trim()) showSuggest(); });
+
+  // --- Modal nouveau lieu
+  function openModal(){ modal.style.display='block'; }
+  function closeModal(){ modal.style.display='none'; }
+
+  newBtn.addEventListener('click', openModal);
+  mClose.addEventListener('click', closeModal);
+  mCancel.addEventListener('click', (e) => { e.preventDefault(); closeModal(); });
+
+  mSave.addEventListener('click', () => {
+    const payload = {
+      nom:        document.getElementById('nl_nom').value.trim(),
+      ville:      document.getElementById('nl_ville').value.trim(),
+      code_postal:document.getElementById('nl_cp').value.trim(),
+      adresse:    document.getElementById('nl_adresse').value.trim(),
+      telephone:  document.getElementById('nl_tel').value.trim(),
+      email:      document.getElementById('nl_mail').value.trim(),
+      contacts:   document.getElementById('nl_contacts').value.trim(),
+      note:       document.getElementById('nl_note').value.trim(),
+    };
+    if (!payload.nom || !payload.ville || !payload.code_postal) {
+      alert("Nom, Ville et Code postal sont requis.");
+      return;
+    }
+    fetch('/api/lieux', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(res => {
+      if (!res.success) { alert(res.message || 'Erreur'); return; }
+      // Renseigne la sélection dans le formulaire concert
+      hid.value = res.lieu.id;
+      inp.value = res.lieu.nom;
+      if (legacy) legacy.value = ''; // on privilégie la fiche
+      closeModal();
+    })
+    .catch(() => alert('Erreur réseau'));
+  });
+})();
+</script>
+
+<script src="{{ url_for('static', filename='js/lieux_autocomplete.js') }}"></script>
+<script>document.addEventListener('DOMContentLoaded', () => initLieuxUI());</script>
 
 <style>
   body {

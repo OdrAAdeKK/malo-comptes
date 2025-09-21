@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Importer des lieux depuis Google Contacts (CSV){% endblock %}
+{% block content %}
+<div class="container" style="max-width:700px;">
+  <h1>Importer des lieux — Google Contacts (CSV)</h1>
+  <p class="muted">
+    1) Dans Google Contacts : <em>Exporter</em> → format <strong>CSV Google</strong>.<br>
+    2) Uploade ici le fichier .csv pour créer des fiches Lieu (nom/organisme/adresse/CP/ville/tél/email/notes).
+  </p>
+
+  <form method="POST" enctype="multipart/form-data" action="{{ url_for('import_lieux_google_csv') }}">
+    <input type="file" name="csv" accept=".csv" required>
+    <div class="button-row" style="margin-top:14px;">
+      <button class="valider-button" type="submit">Importer</button>
+      <a href="{{ url_for('liste_lieux') }}" class="retour-button">Annuler</a>
+    </div>
+  </form>
+
+  <hr style="margin:24px 0;">
+
+  <h3>Export des lieux vers Google Contacts</h3>
+  <p class="muted">Télécharge un CSV compatible import Google Contacts.</p>
+  <a href="{{ url_for('export_lieux_google_csv') }}" class="a-venir-button">⬇ Exporter en CSV Google</a>
+</div>
+{% endblock %}

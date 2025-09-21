@@ -1,0 +1,66 @@
+{# templates/lieu_form.html #}
+{% extends 'base.html' %}
+{% block title %}{{ 'Modifier un lieu' if lieu else 'Nouveau lieu' }}{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/lieux.css') }}">
+
+<div class="fiche">
+  <h1>{{ 'Modifier un lieu' if lieu else 'Nouveau lieu' }}</h1>
+
+  <form method="POST" action="{{ url_for('modifier_lieu', lieu_id=lieu.id) if lieu else url_for('creer_lieu') }}" autocomplete="off" class="card">
+
+    <div class="grid">
+      <div>
+        <label for="nom"><strong>Nom *</strong></label>
+        <input type="text" id="nom" name="nom" required value="{{ lieu.nom if lieu else '' }}">
+      </div>
+	  
+		<div>
+		  <label for="organisme"><strong>Organisme</strong></label>
+		  <input type="text" id="organisme" name="organisme" value="{{ lieu.organisme if lieu else '' }}">
+		</div>
+	  
+      <div>
+        <label for="ville"><strong>Ville *</strong></label>
+        <input type="text" id="ville" name="ville" required value="{{ lieu.ville if lieu else '' }}">
+      </div>
+
+      <div>
+        <label for="code_postal"><strong>Code postal *</strong></label>
+        <input type="text" id="code_postal" name="code_postal" required value="{{ lieu.code_postal if lieu else '' }}">
+      </div>
+
+      <div style="grid-column:1/-1;">
+        <label for="adresse"><strong>Adresse</strong></label>
+        <input type="text" id="adresse" name="adresse" value="{{ lieu.adresse if lieu else '' }}">
+      </div>
+
+      <div>
+        <label for="email"><strong>Email</strong></label>
+        <input type="email" id="email" name="email" value="{{ lieu.email if lieu else '' }}">
+      </div>
+
+      <div>
+        <label for="telephone"><strong>Téléphone</strong></label>
+        <input type="text" id="telephone" name="telephone" value="{{ lieu.telephone if lieu else '' }}">
+      </div>
+
+      <div style="grid-column:1/-1;">
+        <label for="contacts"><strong>Contacts</strong></label>
+        <textarea id="contacts" name="contacts" rows="3" placeholder="Ex. : Prénom Nom — 06 12 34 56 78 — email@exemple.com">{{ lieu.contacts if lieu else '' }}</textarea>
+      </div>
+
+      <div style="grid-column:1/-1;">
+        <label for="note"><strong>Note</strong></label>
+        <textarea id="note" name="note" rows="4">{{ lieu.note if lieu else '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="button-row" style="margin-top:12px;">
+      <button type="submit" class="valider-button">Valider</button>
+      <a href="{{ url_for('liste_lieux') }}" class="retour-button">← Retour</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

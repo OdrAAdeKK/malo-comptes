@@ -1,5 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from sqlalchemy import Index
+
 
 db = SQLAlchemy()
 
@@ -30,16 +32,40 @@ class Concert(db.Model):
     __tablename__ = 'concerts'
 
     id = db.Column(db.Integer, primary_key=True)
-    date = db.Column(db.Date, nullable=False)
-    lieu = db.Column(db.String(100), nullable=False)
+
+    # Tri/filtre fréquents
+    date = db.Column(db.Date, nullable=False, index=True)
+    paye = db.Column(db.Boolean, default=False, index=True)
+
+    # ⚠️ Texte libre historique (on le garde mais NON obligatoire)
+    #    On l’alimente souvent avec lieu_obj.nom pour l’affichage retro-compat.
+    lieu = db.Column(db.String(160), nullable=True)
+
+    # ✅ Nouveau lien structuré vers la fiche Lieu
+    lieu_id = db.Column(
+        db.Integer,
+        db.ForeignKey('lieux.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True
+    )
+    lieu_obj = db.relationship(
+        'Lieu',
+        backref=db.backref('concerts', lazy=True)
+    )
+
+    # Montants
     recette = db.Column(db.Float, nullable=True)
     recette_attendue = db.Column(db.Float, nullable=True)
     frais = db.Column(db.Float, nullable=True)
-    paye = db.Column(db.Boolean, default=False)
 
-    participations = db.relationship('Participation', backref='concert', cascade="all, delete-orphan")
+    # Participations
+    participations = db.relationship(
+        'Participation',
+        backref='concert',
+        cascade="all, delete-orphan"
+    )
 
-    # ⬇️ Make explicit which FK links operations -> this concert
+    # Lien explicite Opérations -> Concert
     operations = db.relationship(
         'Operation',
         back_populates='concert',
@@ -47,16 +73,22 @@ class Concert(db.Model):
         lazy=True
     )
 
+    # Prévisions / mode de paiement
     mode_paiement_prevu = db.Column(db.String(32), default='CB ASSO7')
     frais_previsionnels = db.Column(db.Float, nullable=True)
 
-    # op de frais prévisionnels (optionnelle) pointant vers operations.id
+    # Opération de frais prévisionnels (liée, optionnelle)
     op_prevision_frais_id = db.Column(db.Integer, db.ForeignKey('operations.id'), nullable=True)
     op_prevision_frais = db.relationship(
         'Operation',
         foreign_keys=[op_prevision_frais_id],
         uselist=False
     )
+
+    def __repr__(self):
+        who = self.lieu_obj.nom if self.lieu_obj else (self.lieu or '—')
+        return f"<Concert #{self.id} {self.date} @ {who}>"
+
 
 
 class Participation(db.Model):
@@ -129,3 +161,69 @@ class Report(db.Model):
     musicien_id = db.Column(db.Integer, db.ForeignKey('musiciens.id'), nullable=False)
     montant = db.Column(db.Float, nullable=False)
     musicien = db.relationship('Musicien', backref=db.backref('reports', lazy=True))
+
+# --- NOUVEAUX MODÈLES ---
+
+class Lieu(db.Model):
+    __tablename__ = 'lieux'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Identification du lieu
+    nom = db.Column(db.String(160), nullable=False, index=True)
+    organisme = db.Column(db.String(160), nullable=True)  # ← NEW/présent
+    ville = db.Column(db.String(120), nullable=True, index=True)
+    code_postal = db.Column(db.String(10), nullable=True, index=True)
+    adresse = db.Column(db.String(255), nullable=True)
+
+    # Contacts
+    telephone = db.Column(db.String(80), nullable=True)
+    email = db.Column(db.String(255), nullable=True)
+    contacts = db.Column(db.Text, nullable=True)
+
+    # Notes
+    note = db.Column(db.Text, nullable=True)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<Lieu #{self.id} {self.nom} ({self.ville or '—'})>"
+
+    @property
+    def label(self) -> str:
+        return f"{self.nom} — {self.ville}" if self.ville else self.nom
+
+    @property
+    def region(self) -> str:
+        try:
+            from mes_utils import region_from_cp
+            if self.code_postal:
+                return region_from_cp(self.code_postal)
+        except Exception:
+            pass
+        return "DIVERS"
+
+
+
+
+# Optionnel : index composite pour éviter trop de doublons (nom, ville)
+Index('uq_lieux_nom_ville_unique_soft', Lieu.nom, Lieu.ville)
+
+class Programmateur(db.Model):
+    __tablename__ = 'programmateurs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    lieu_id = db.Column(
+        db.Integer,
+        db.ForeignKey('lieux.id', ondelete="CASCADE"),
+        nullable=False
+    )
+    nom = db.Column(db.String(120), nullable=False)
+    telephone = db.Column(db.String(50), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    def __repr__(self) -> str:
+        return f"<Programmateur {self.nom} (lieu_id={self.lieu_id})>"
