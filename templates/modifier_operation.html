@@ -7,7 +7,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/fr.js"></script>
-    <script src="{{ url_for('static', filename='js/operations_concert_picker.js') }}"></script>
     <style>
         .operations-form-container {
             background: #fff;
@@ -155,90 +154,119 @@
 <div class="operations-form-container">
     <form method="POST" action="{{ url_for('modifier_operation', id=operation.id) }}">
     <div class="form-row-flex">
-	  <div>
-		<label for="musicien">Qui&nbsp;?</label>
-		<div>DEBUG-MODIF-ICI</div>
-			<select name="musicien" id="musicien" required>	
-		
-		  <option value="">-- Sélectionner --</option>
-		  {% for musicien in musiciens_normaux %}
-			{% set nom_complet = (musicien['prenom'] ~ ' ' ~ musicien['nom']).strip() %}
-			<option value="{{ nom_complet }}" {% if operation and nom_complet == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>{{ nom_complet }}</option>
-		  {% endfor %}
-		  <option disabled>──────────</option>
-		  {% for musicien in structures %}
-			{% set nom_complet = (musicien['prenom'] ~ ' ' ~ musicien['nom']).strip() %}
-			<option value="{{ nom_complet }}" class="structure-option" style="color:#ab27b9;font-weight:bold;" {% if operation and nom_complet == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>{{ nom_complet }}</option>
-		  {% endfor %}
-		</select>
+      <div>
+        <label for="musicien">Qui&nbsp;?</label>
+        <select name="musicien" id="musicien" required>
+          <option value="">-- Sélectionner --</option>
+          {% for musicien in musiciens_normaux %}
+            {% set nom_complet = (musicien['prenom'] ~ ' ' ~ musicien['nom']).strip() %}
+            <option value="{{ nom_complet }}"
+              {% if operation and nom_complet == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
+              {{ nom_complet }}
+            </option>
+          {% endfor %}
+          <option disabled>──────────</option>
+          {% for musicien in structures %}
+            {% set nom_complet = (musicien['prenom'] ~ ' ' ~ musicien['nom']).strip() %}
+            <option value="{{ nom_complet }}" class="structure-option" style="color:#ab27b9;font-weight:bold;"
+              {% if operation and nom_complet == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
+              {{ nom_complet }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
 
-	  </div>
-            <div>
-                <label for="date">Date :</label>
-                <input type="text" name="date" id="date" value="{{ operation.date.strftime('%d/%m/%Y') if operation else current_date }}" required>
-            </div>
+      <div>
+        <label for="date">Date :</label>
+        <input type="text" name="date" id="date"
+               value="{{ operation.date.strftime('%d/%m/%Y') if operation else current_date }}" required>
+      </div>
+    </div>
+
+    <div>
+      <label>Type d'opération :</label>
+      <div class="radio-group">
+        <label><input type="radio" id="credit_radio" name="type_visible" value="credit"
+          {% if operation and operation.type == 'credit' %}checked{% endif %}> Crédit</label>
+        <label><input type="radio" id="debit_radio" name="type_visible" value="debit"
+          {% if operation and operation.type == 'debit' %}checked{% endif %}> Débit</label>
+        <input type="hidden" name="type" id="type_hidden" value="{{ operation.type if operation else '' }}">
+      </div>
+    </div>
+
+    <div class="form-row-flex">
+      <div>
+        <label for="motif">Motif</label>
+        <select id="motif" name="motif" required>
+          <option value="Salaire" {% if operation and operation.motif == "Salaire" %}selected{% endif %}>Salaire</option>
+          <option value="Frais" {% if operation and operation.motif == "Frais" %}selected{% endif %}>Frais</option>
+          <option value="Achat" {% if operation and operation.motif == "Achat" %}selected{% endif %}>Achat</option>
+          <option value="Vente" {% if operation and operation.motif == "Vente" %}selected{% endif %}>Vente</option>
+          <option value="Recette concert" {% if operation and operation.motif == "Recette concert" %}selected{% endif %}>Recette concert</option>
+          <option value="Remboursement frais divers" {% if operation and operation.motif == "Remboursement frais divers" %}selected{% endif %}>
+            Remboursement frais divers
+          </option>
+        </select>
+      </div>
+      <div>
+        <label for="precision">Précisez</label>
+        <input type="text" id="precision" name="precision"
+               placeholder="Ex. : transport, avance, matériel…"
+               value="{{ operation.precision if operation else '' }}">
+      </div>
+    </div>
+
+    <div class="triple-field-row">
+      <div class="field-col small">
+        <label for="montant">Montant (€) :</label>
+        <input type="number" name="montant" id="montant" step="0.01" required
+               value="{{ operation.montant if operation else '' }}">
+      </div>
+      <div class="field-col small">
+        <label for="brut">Brut (salaires uniquement) :</label>
+        <input type="number" name="brut" id="brut" step="0.01"
+               value="{{ operation.brut if operation and operation.brut else '' }}">
+      </div>
+      <div class="field-col large">
+        <label for="concert_field">Concert lié :</label>
+        <div class="concert-autocomplete-wrapper" style="position:relative;">
+          <!-- Champ visible pour l’utilisateur -->
+          <input type="text" id="concert_field" name="concert_field"
+                 placeholder="JJ/MM/AAAA — Lieu" autocomplete="off"
+                 value="{% if operation and operation.concert %}{{ operation.concert.date.strftime('%d/%m/%Y') ~ ' — ' ~ operation.concert.lieu }}{% endif %}">
+          <!-- Input caché pour Flatpickr (concert lié) -->
+          <input type="text" id="concert_date_picker" style="display:none">
+          <!-- Hidden ID concert -->
+          <input type="hidden" id="concert_id" name="concert_id"
+                 value="{{ operation.concert.id if operation and operation.concert else '' }}">
+          <!-- Icône calendrier -->
+          <span id="calendar_icon"
+                style="position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; font-size:1.25em;">📅</span>
+          <!-- Liste autocomplete -->
+          <div id="concert_autocomplete" class="autocomplete-list"
+               style="position:absolute; left:0; right:0; top:100%; z-index:10; background:white; border:1px solid #bbb; display:none;"></div>
         </div>
-        <div>
-            <label>Type d'opération :</label>
-            <div class="radio-group">
-                <label><input type="radio" name="type" id="credit_radio" value="credit" {% if operation and operation.type == 'credit' %}checked{% endif %}> Crédit</label>
-                <label><input type="radio" name="type" id="debit_radio" value="debit" {% if operation and operation.type == 'debit' %}checked{% endif %}> Débit</label>
-            </div>
-        </div>
-        <div class="form-row-flex">
-            <div>
-                <label for="motif">Motif</label>
-                <select id="motif" name="motif" required>
-                    {% for opt in ['Salaire', 'Frais', 'Remboursement', 'Autre'] %}
-                        <option value="{{ opt }}" {% if operation and operation.motif == opt %}selected{% endif %}>{{ opt }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label for="precision">Précisez</label>
-                <input type="text" id="precision" name="precision" placeholder="Ex. : transport, avance, matériel…" value="{{ operation.precision if operation else '' }}">
-            </div>
-        </div>
-			<div class="triple-field-row">
-			  <div class="field-col small">
-				<label for="montant">Montant (€) :</label>
-				<input type="number" name="montant" id="montant" step="0.01" required
-					   value="{{ operation.montant if operation else '' }}">
-			  </div>
-			  <div class="field-col small">
-				<label for="brut">Brut (salaires uniquement) :</label>
-				<input type="number" name="brut" id="brut" step="0.01"
-					   value="{{ operation.brut if operation and operation.brut else '' }}">
-			  </div>
-			  <div class="field-col large">
-				<label for="concert_field">Concert lié (pour Frais) :</label>
-				<div class="concert-autocomplete-wrapper">
-				  <input type="text" id="concert_field" name="concert_field"
-						 placeholder="JJ/MM/AAAA ou sélection…" autocomplete="off"
-						 value="{% if operation and operation.concert %}{{ operation.concert.date.strftime('%d/%m/%Y') ~ ' — ' ~ operation.concert.lieu }}{% endif %}">
-				  <input type="hidden" id="concert_id" name="concert_id"
-						 value="{{ operation.concert.id if operation and operation.concert else '' }}">
-				  <span id="calendar_icon"
-						style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 1.25em;">📅</span>
-				  <div id="concert_autocomplete" class="autocomplete-list"
-					   style="position:absolute; left:0; right:0; top:100%; z-index:10; background:white; border:1px solid #bbb; display:none;"></div>
-				</div>
-			  </div>
-			</div>
-		        <div class="button-row">
-				   <button type="submit" class="valider-button" style="width: 100%; max-width: 700px;">Valider</button>
-				</div>
-				<div class="button-row">
-					<a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-					<a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-					<a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
-					<a href="{{ url_for('operations_a_venir') }}" class="a-venir-button">À venir</a>  <!-- ⬅ Nouveau bouton -->
-				</div>
+      </div>
+    </div>
+
+    <div class="button-row">
+      <button type="submit" class="valider-button" style="width: 100%; max-width: 700px;">Valider</button>
+    </div>
+    <div class="button-row">
+      <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+      <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+      <a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
+      <a href="{{ url_for('operations_a_venir') }}" class="a-venir-button">À venir</a>
+    </div>
     </form>
 </div>
+
+<!-- Données pour le JS -->
 <script>window.concerts = {{ concerts_js | tojson | safe }};</script>
+<script>window.concertsParMusicien = {{ concerts_par_musicien | tojson | safe }};</script>
 
+<!-- Bundle (gère motifs, type, brut, calendrier & autocomplete) -->
 <script src="{{ url_for('static', filename='js/operations.js') }}"></script>
-
 </body>
+
 </html>

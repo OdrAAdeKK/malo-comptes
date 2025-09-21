@@ -40,19 +40,32 @@
                   <span style="color:#888;">
                     {{ concert.frais | format_currency if concert.frais is not none else '' }}
                   </span>
+                  {% if not concert.paye and concert.frais_previsionnels %}
+                    <span style="color:#6b7280; font-style:italic;">
+                      + {{ concert.frais_previsionnels | format_currency }} (prévision)
+                    </span>
+                  {% endif %}
                 </td>
 
+                {# --- Prévision (net) = base – (frais + frais prévisionnels si non payé) --- #}
                 <td class="col-amount">
-                  {% if concert.recette_attendue is not none %}
-                    {% set net = ((concert.recette_attendue or 0) - (concert.frais or 0)) %}
+                  {% set base = (concert.recette_attendue if concert.recette_attendue is not none else (concert.recette if concert.recette is not none else None)) %}
+                  {% if base is not none %}
+                    {% set frais_app = (concert.frais or 0) + ((concert.frais_previsionnels or 0) if not concert.paye else 0) %}
+                    {% set net = (base or 0) - frais_app %}
                     <span style="font-weight:600; color:{{ '#d32f2f' if net < 0 else '#444' }};">
                       {{ net | format_currency }}
                     </span>
-                    {% if concert.frais %}
-                      <div class="subnote">
-                        ({{ concert.recette_attendue | format_currency }} attendus – {{ concert.frais | format_currency }} frais)
-                      </div>
-                    {% endif %}
+                    <div class="subnote">
+                      ({{ base | format_currency }} attendus
+                       – {{ concert.frais | format_currency if concert.frais else '0,00 €' }} frais
+                       {% if not concert.paye and concert.frais_previsionnels %}
+                         – <span style="color:#6b7280; font-style:italic;">
+                             {{ concert.frais_previsionnels | format_currency }} (prévision)
+                           </span>
+                       {% endif %}
+                      )
+                    </div>
                   {% else %}
                     <span class="muted"></span>
                   {% endif %}
@@ -62,22 +75,30 @@
                   <input type="checkbox"
                          class="paye-checkbox"
                          data-id="{{ concert.id }}"
-                         data-recette-attendue="{{ concert.recette_attendue or '' }}">
+                         data-recette-attendue="{{ concert.recette_attendue or '' }}"
+                         data-date="{{ concert.date.isoformat() }}">
                 </td>
 
                 <td class="col-actions">
-                  {% if credits_musiciens.get(concert.id) %}
-                    <div class="credits">
-                      <strong>Participants&nbsp;:</strong>
-                      <ul>
-                        {% for mid, credit in credits_musiciens[concert.id].items() %}
-                          {% set m = musiciens_dict[mid] %}
-                          <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
-                        {% endfor %}
-                        <li class="asso7">ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}</li>
-                      </ul>
-                    </div>
-                  {% endif %}
+					{% if credits_musiciens.get(concert.id) %}
+					  <div class="credits">
+						<strong>Participants&nbsp;:</strong>
+						<ul>
+						  {% set fpm = frais_par_musicien.get(concert.id, {}) if frais_par_musicien else {} %}
+						  {% for mid, credit in credits_musiciens[concert.id].items() %}
+							{% set m = musiciens_dict[mid] %}
+							<li>
+							  {{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
+							  {% if fpm.get(mid) %}
+								<div class="frais-note">frais : {{ fpm.get(mid) | float | round(2) | format_currency }}</div>
+							  {% endif %}
+							</li>
+						  {% endfor %}
+						  <li class="asso7">ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}</li>
+						</ul>
+					  </div>
+					{% endif %}
+
 
                   <div class="actions">
                     <!-- ⚖️ Ajustements / gains fixes -->
@@ -114,45 +135,104 @@
 <script src="{{ url_for('static', filename='js/popup_paiement.js') }}"></script>
 
 <script>
-document.querySelectorAll('.paye-checkbox').forEach(function(box) {
-  box.addEventListener('change', function() {
-    const concertId = this.dataset.id;
-    if (this.checked) {
-      showPopupPaiement(concertId, function(compte) {
-        if (!compte) { box.checked = false; return; }
-        fetch("/valider_paiement_concert", {
+  // Templates d'URL fournis par Flask
+  const ARCHIVE_SEASON_URL_TEMPLATE = "{{ url_for('archives_concerts_saison', saison='__SEASON__') }}";
+  const ARCHIVES_URL                = "{{ url_for('archives_concerts') }}";
+
+  function computeSeasonLabelFromISO(isoDate) {
+    // isoDate attendu "YYYY-MM-DD"
+    try {
+      const d = new Date(isoDate);
+      if (isNaN(d)) return null;
+      const month = d.getMonth() + 1; // 1..12
+      const year  = d.getFullYear();
+      const start = (month >= 9) ? year : (year - 1); // saison = à partir de septembre
+      return `${start}-${start + 1}`;
+    } catch {
+      return null;
+    }
+  }
+</script>
+
+<script>
+  document.querySelectorAll('.paye-checkbox').forEach(function (box) {
+    box.addEventListener('change', function () {
+      const concertId = Number(this.dataset.id || 0);
+      const isoDate   = this.dataset.date || "";
+
+      if (!concertId) { this.checked = false; return; }
+
+      if (this.checked) {
+        // Popup pour choisir le mode de paiement (Compte / Espèces…)
+        showPopupPaiement(String(concertId), function (compteChoisi) {
+          if (!compteChoisi) { box.checked = false; return; }
+
+          fetch("/valider_paiement_concert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              concert_id: concertId,
+              compte    : compteChoisi
+              // recette: ... (optionnel si tu veux la saisir via la popup)
+            })
+          })
+          .then(r => r.json())
+          .then(data => {
+            if (!data || !data.success) {
+              alert("Erreur : " + ((data && data.message) || "inconnue"));
+              box.checked = false;
+              return;
+            }
+
+            // 1) Si le backend fournit une URL, on la suit en priorité
+            if (data.redirect_url) {
+              window.location.assign(data.redirect_url);
+              return;
+            }
+
+            // 2) Fallback : calculer la saison depuis la date du concert (data-date)
+            const season = computeSeasonLabelFromISO(isoDate);
+            if (season) {
+              const url = ARCHIVE_SEASON_URL_TEMPLATE.replace("__SEASON__", season);
+              window.location.assign(url);
+              return;
+            }
+
+            // 3) Ultime secours : page Archives
+            window.location.assign(ARCHIVES_URL);
+          })
+          .catch(err => {
+            alert("Erreur réseau : " + err);
+            box.checked = false;
+          });
+        });
+      } else {
+        // Annuler la validation du paiement
+        if (!confirm("Annuler la validation du paiement pour ce concert ?")) {
+          this.checked = true; return;
+        }
+        fetch("/annuler_paiement_concert", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ concert_id: Number(concertId), compte: compte }) // Number() par cohérence
+          body: JSON.stringify({ concert_id: concertId })
         })
         .then(r => r.json())
         .then(data => {
-          if (data.success) location.reload();
-          else { alert("Erreur : " + (data.message || "inconnue")); box.checked = false; }
+          if (data && data.success) location.reload();
+          else { alert("Erreur : " + ((data && data.message) || "inconnue")); this.checked = true; }
+        })
+        .catch(err => {
+          alert("Erreur réseau : " + err);
+          this.checked = true;
         });
-      });
-    } else {
-      if (!confirm("Annuler la validation du paiement pour ce concert ?")) {
-        this.checked = true; return;
       }
-      fetch("/annuler_paiement_concert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ concert_id: Number(concertId) })
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) location.reload();
-        else { alert("Erreur : " + (data.message || "inconnue")); this.checked = true; }
-      });
-    }
+    });
   });
-});
 </script>
 
 <style>
 /* Container plus large, avec fallback responsive */
-.container.wide { 
+.container.wide {
   width: min(96vw, 1200px);
   max-width: 1200px;
 }
@@ -195,4 +275,14 @@ tr:hover { background-color: #f7f9ff; }
 .delete-button{ background:#d32f2f; } .delete-button:hover{ background:#b71c1c; }
 .participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
 </style>
+
+<style>
+  .frais-note{
+    font-size: .85em;
+    color: #6b7280;     /* gris */
+    font-style: italic;
+    margin-left: 4px;
+  }
+</style>
 {% endblock %}
+

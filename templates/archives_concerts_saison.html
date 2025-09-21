@@ -38,20 +38,29 @@
                   {% if readonly_checkboxes %}disabled{% endif %}>
               </td>
               <td>
-                {% if credits_musiciens.get(concert.id) %}
-                  <div class="credits" style="font-size:0.95em; margin-bottom:8px;">
-                    <strong>Participants&nbsp;:</strong>
-                    <ul style="margin:6px 0 4px 16px; padding-left:0;">
-                      {% for mid, credit in credits_musiciens[concert.id].items() %}
-                        {% set m = musiciens_dict[mid] %}
-                        <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
-                      {% endfor %}
-                      <li style="font-weight:600; color:#673ab7;">
-                        ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
-                      </li>
-                    </ul>
-                  </div>
-                {% endif %}
+				{% if credits_musiciens.get(concert.id) %}
+				  <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
+					<strong>Participants&nbsp;:</strong>
+					<ul style="margin:6px 0 4px 16px; padding-left:0;">
+						{% set fpm = frais_par_musicien.get(concert.id, {}) if frais_par_musicien else {} %}
+						{% for mid, credit in credits_musiciens[concert.id].items() %}
+						  {% set m = musiciens_dict[mid] %}
+						  {% set frais_val = fpm.get(mid) %}
+						  <li>
+							{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
+							{% if frais_val is not none and frais_val != 0 %}
+							  <div class="frais-note">frais : {{ (frais_val | float) | abs | format_currency }}</div>
+							{% endif %}
+						  </li>
+						{% endfor %}
+
+					  <li style="font-weight:600; color:#673ab7;">
+						ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
+					  </li>
+					</ul>
+				  </div>
+				{% endif %}
+
 
 				<div class="actions">
 				  <!-- ⚖️ Ajustements / gains fixes -->
@@ -153,4 +162,14 @@
     });
   });
 </script>
+
+<style>
+  .frais-note{
+    font-size:.85em;
+    color:#6b7280;
+    font-style:italic;
+    margin-left:4px;
+  }
+</style>
+
 {% endblock %}

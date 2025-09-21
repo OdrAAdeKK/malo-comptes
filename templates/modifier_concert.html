@@ -87,8 +87,29 @@
       <label for="lieu">Lieu</label>
       <input type="text" name="lieu" value="{{ concert.lieu }}" required>
 
-      <label for="recette">Recette (€)</label>
-      <input type="number" step="0.01" name="recette" value="{{ concert.recette or '' }}">
+		<label for="recette">Recette (€)</label>
+		<input type="text" name="recette" id="recette"
+			   value="{{ recette_initiale if recette_initiale is not none else '' }}"
+			   inputmode="decimal" placeholder="ex : 550,00">
+
+	  
+		<div class="form-group" style="margin-top:8px;">
+		  <label for="frais_previsionnels">Frais prévisionnels</label>
+		  <input
+			type="text"
+			id="frais_previsionnels"
+			name="frais_previsionnels"
+			inputmode="decimal"
+			placeholder="ex : 120,00"
+			value="{{ concert.frais_previsionnels if concert.frais_previsionnels is not none else '' }}"
+			{% if concert.paye %}disabled{% endif %}>
+		  {% if concert.paye %}
+			<small class="muted">Concert payé — les prévisions sont désactivées.</small>
+		  {% else %}
+			<small class="muted">Comptés dans le partage tant que le concert n’est pas payé (affiché en gris).</small>
+		  {% endif %}
+		</div>
+			  
 
 
       <input type="hidden" name="saison" value="{{ saison|replace('/', '-') }}">

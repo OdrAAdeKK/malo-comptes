@@ -11,17 +11,21 @@
         font-size: 1.1rem;
         padding: 6px;
     }
-    .icon-button.orange {
-        color: #E67E22;
-    }
-    .icon-button.red {
-        color: #C0392B;
-    }
-    .archived-table {
+    .icon-button.orange { color: #E67E22; }
+    .icon-button.red { color: #C0392B; }
+
+    /* ✓ élargir la page comme les concerts */
+    .container.ops-a-venir {
+        max-width: 1200px;
         width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-        font-size: 1rem;
+    }
+
+    .archived-table { 
+        width: 100%; 
+        border-collapse: collapse; 
+        margin-top: 20px; 
+        font-size: 1rem; 
+        table-layout: auto;
     }
     .archived-table thead th {
         background-color: #26bfa6 !important;
@@ -33,65 +37,92 @@
         border: 1px solid #e0e0e0;
         text-align: left;
     }
-    .archived-table tbody tr:nth-child(even) {
-        background-color: #f9f9f9;
-    }
-    .archived-table tbody tr:hover {
-        background-color: #e6f8f5;
-    }
+    .archived-table tbody tr:nth-child(even) { background-color: #f9f9f9; }
+    .archived-table tbody tr:hover { background-color: #e6f8f5; }
 
-    tr.operation-auto {
-        background-color: #f3f3f3;
-        color: #666;
-        font-style: italic;
-    }
-    tr.operation-auto td {
-        border-top: 1px solid #ddd;
-    }
-    .mois-bandeau {
-        margin-top: 30px;
-        padding: 8px;
-        background: #f0f0f0;
-        font-weight: bold;
-        border-radius: 4px;
-        font-size: 1.2rem;
-    }
+    /* ✓ opérations auto + prévisionnels */
+    tr.operation-auto { background-color: #f3f3f3; color: #666; font-style: italic; }
+    tr.operation-auto td { border-top: 1px solid #ddd; }
+    .mois-bandeau { margin-top: 30px; padding: 8px; background: #f0f0f0; font-weight: bold; border-radius: 4px; font-size: 1.2rem; }
+    tr.is-previsionnel { background: #fafafa; }
+    .muted-italic { color: #6b7280; font-style: italic; }
+    .prev-tag { color: #6b7280; font-style: italic; margin-left: 6px; font-size: .9em; }
+
+	/* largeur précise des colonnes (index du tableau) */
+	.container.ops-a-venir .archived-table th:nth-child(6),
+	.container.ops-a-venir .archived-table td:nth-child(6) {
+	  width: 12.5ch;            /* Montant ~12 caractères */
+	  min-width: 12.5ch;
+	  max-width: 12.5ch;
+	  white-space: nowrap;
+	  text-align: right;
+	  font-variant-numeric: tabular-nums;
+	}
+
+	/* Rééquilibrage : plus d’espace pour Qui / Motif / Précision, un peu moins pour Concert */
+	.container.ops-a-venir .archived-table th:nth-child(2),
+	.container.ops-a-venir .archived-table td:nth-child(2) {
+	  width: 18%;               /* Qui */
+	}
+
+	.container.ops-a-venir .archived-table th:nth-child(4),
+	.container.ops-a-venir .archived-table td:nth-child(4) {
+	  width: 14%;               /* Motif */
+	}
+
+	.container.ops-a-venir .archived-table th:nth-child(5),
+	.container.ops-a-venir .archived-table td:nth-child(5) {
+	  width: 22%;               /* Précision */
+	  word-break: break-word;   /* au cas où */
+	}
+
+	.container.ops-a-venir .archived-table th:nth-child(7),
+	.container.ops-a-venir .archived-table td:nth-child(7) {
+	  width: 28%;               /* Concert (réduit depuis 40%) */
+	}
+
 </style>
 
-<div class="container">
+<div class="container ops-a-venir">
     <h1>Opérations à venir</h1>
 
     {% if groupes %}
         {% for key, bloc in groupes.items() %}
     <h2>{{ bloc.label }}</h2>
     <table class="archived-table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Qui</th>
-                <th>Type</th>
-                <th>Motif</th>
-                <th></th>
-                <th>Montant</th>
-                <th>Concert</th>
-                <th style="text-align: center;">Actions</th>
-            </tr>
-        </thead>
+		<thead>
+		  <tr>
+			<th id="sort-date-{{ loop.index }}" style="cursor:pointer;">Date ⬍</th>
+			<th id="sort-qui-{{ loop.index }}" style="cursor:pointer;">Qui ⬍</th>
+			<th>Type</th>
+			<th>Motif</th>
+			<th>Précision</th>
+			<th id="sort-montant-{{ loop.index }}" style="cursor:pointer; text-align:right;">Montant ⬍</th>
+			<th id="sort-concert-{{ loop.index }}" style="cursor:pointer;">Concert ⬍</th>
+			<th style="text-align: center;">Actions</th>
+		  </tr>
+		</thead>
+
         <tbody>
             {% for op in bloc["items"] %}
-            <tr class="{% if op.motif|lower == 'commission lionel' %}operation-auto{% endif %}">
-                <td>{{ op.date.strftime('%d/%m/%Y') }}</td>
+            <tr class="{% if op.motif|lower == 'commission lionel' %}operation-auto {% endif %}{% if op.previsionnel %}is-previsionnel{% endif %}">
+                <td>
+                  {{ op.date.strftime('%d/%m/%Y') }}
+                  {% if op.previsionnel %}<em class="prev-tag">(prévisionnel)</em>{% endif %}
+                </td>
                 <td>{{ op.musicien.prenom }} {{ op.musicien.nom }}</td>
                 <td>{{ op.type }}</td>
                 <td>{{ op.motif }}</td>
                 <td>{{ op.precision or '' }}</td>
-                <td>{{ "{:,.2f}".format(op.montant).replace(',', ' ').replace('.', ',') }} €</td>
+                <td class="col-amount">
+                  <span class="{% if op.previsionnel %}muted-italic{% endif %}">
+                    {{ "{:,.2f}".format(op.montant).replace(',', ' ').replace('.', ',') }} €
+                  </span>
+                </td>
                 <td>
                     {% if op.concert %}
                         {{ op.concert.date.strftime('%d/%m/%Y') }} — {{ op.concert.lieu }}
-                    {% else %}
-                        —
-                    {% endif %}
+                    {% else %}—{% endif %}
                 </td>
                 <td style="text-align: center;">
                     {% if op.motif|lower != 'commission lionel' %}
@@ -129,41 +160,61 @@
 <script src="{{ url_for('static', filename='js/supprimer_operation.js') }}"></script>
 
 <script>
-function sortTableByColumn(table, columnIndex, numeric = false) {
-    const tbody = table.querySelector("tbody");
-    const rows = Array.from(tbody.querySelectorAll("tr"));
-    const key = table.getAttribute("data-month-key") || "";
-    const attrName = `data-sort-${key}-${columnIndex}`;
-    const currentOrder = table.getAttribute(attrName) || "desc";
-    const newOrder = currentOrder === "asc" ? "desc" : "asc";
+function norm(s){return (s||"").toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();}
 
-    rows.sort((a, b) => {
-        let valA = a.children[columnIndex].innerText.trim();
-        let valB = b.children[columnIndex].innerText.trim();
+function sortKeyFromCell(td, type){
+  const raw=(td.innerText||td.textContent||'').trim();
+  if(type==='date'){
+    const m=raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if(!m) return -Infinity;
+    return new Date(`${m[3]}-${m[2]}-${m[1]}`).getTime();
+  }
+  if(type==='amount'){
+    return parseFloat(raw.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d.\-+]/g,''))||0;
+  }
+  if(type==='concert'){
+    if(raw==='—'||raw==='-') return '';
+    const parts=raw.split('—');
+    const lieu=(parts.length>1?parts.slice(1).join('—'):raw);
+    return norm(lieu);
+  }
+  return norm(raw);
+}
 
-        if (numeric) {
-            valA = parseFloat(valA.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d\.\-+]/g,''));
-            valB = parseFloat(valB.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d\.\-+]/g,''));
-        } else {
-            const [dA, mA, yA] = valA.split("/");
-            const [dB, mB, yB] = valB.split("/");
-            valA = new Date(`${yA}-${mA}-${dA}`).getTime();
-            valB = new Date(`${yB}-${mB}-${dB}`).getTime();
-        }
-        return (newOrder === "asc") ? (valA - valB) : (valB - valA);
-    });
+function sortTableByColumn(table, columnIndex, type){
+  const tbody=table.querySelector("tbody");
+  const rows=Array.from(tbody.querySelectorAll("tr"));
+  const key=table.getAttribute("data-month-key")||"";
+  const attrName=`data-sort-${key}-${columnIndex}`;
+  const current=table.getAttribute(attrName)||"desc";
+  const newOrder=current==="asc"?"desc":"asc";
+  const factor=newOrder==="asc"?1:-1;
 
-    rows.forEach(row => tbody.appendChild(row));
-    table.setAttribute(attrName, newOrder);
+  rows.sort((a,b)=>{
+    const ka=sortKeyFromCell(a.children[columnIndex], type);
+    const kb=sortKeyFromCell(b.children[columnIndex], type);
+    if(ka<kb) return -1*factor;
+    if(ka>kb) return  1*factor;
+    return 0;
+  });
+
+  rows.forEach(r=>tbody.appendChild(r));
+  table.setAttribute(attrName, newOrder);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("table.archived-table").forEach((table, i) => {
-        const thDate = document.getElementById(`sort-date-${i+1}`);
-        const thMont = document.getElementById(`sort-montant-${i+1}`);
-        if (thDate) thDate.addEventListener("click", () => sortTableByColumn(table, 0, false));
-        if (thMont) thMont.addEventListener("click", () => sortTableByColumn(table, 5, true));
-    });
+  document.querySelectorAll("table.archived-table").forEach((table, i) => {
+    const thDate    = document.getElementById(`sort-date-${i+1}`);
+    const thQui     = document.getElementById(`sort-qui-${i+1}`);
+    const thMontant = document.getElementById(`sort-montant-${i+1}`);
+    const thConcert = document.getElementById(`sort-concert-${i+1}`);
+
+    if (thDate)    thDate   .addEventListener("click", () => sortTableByColumn(table, 0, 'date'));
+    if (thQui)     thQui    .addEventListener("click", () => sortTableByColumn(table, 1, 'text'));
+    if (thMontant) thMontant.addEventListener("click", () => sortTableByColumn(table, 5, 'amount'));
+    if (thConcert) thConcert.addEventListener("click", () => sortTableByColumn(table, 6, 'concert'));
+  });
 });
 </script>
+
 {% endblock %}

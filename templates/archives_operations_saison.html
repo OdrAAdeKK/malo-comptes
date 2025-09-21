@@ -4,8 +4,65 @@
 
 {% block content %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/archives_operations.css') }}">
+<style>
+  /* État prévisionnel + micro-styles */
+  tr.is-previsionnel { background: #fafafa; }
+  .muted-italic { color: #6b7280; font-style: italic; }
+  .prev-tag { color: #6b7280; font-style: italic; margin-left: 6px; font-size: .9em; }
 
-<div class="container">
+  /* Cadre + tableau */
+  .container.archives-ops { max-width: 1200px; width: 100%; }
+  .container.archives-ops .archived-table { width: 100%; table-layout: auto; border-collapse: collapse; }
+
+  /* ✅ Empêche l’empilement visuel : ligne confortable partout */
+  .container.archives-ops .archived-table th,
+  .container.archives-ops .archived-table td {
+    line-height: 1.35;          /* <- clé du problème */
+    vertical-align: middle;      /* ou 'top' si tu préfères */
+    white-space: normal;         /* reset */
+  }
+
+  /* Col. Montant (6) : ~12,5 caractères, non-wrap + chiffres tabulaires */
+  .container.archives-ops .archived-table th:nth-child(6),
+  .container.archives-ops .archived-table td:nth-child(6) {
+    width: 12.5ch;
+    min-width: 12.5ch;
+    max-width: 12.5ch;
+    white-space: nowrap;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Rééquilibrage : Qui / Motif / Précision / Concert */
+  .container.archives-ops .archived-table th:nth-child(2),
+  .container.archives-ops .archived-table td:nth-child(2) { /* Qui */
+    width: 18%;
+  }
+  .container.archives-ops .archived-table th:nth-child(4),
+  .container.archives-ops .archived-table td:nth-child(4) { /* Motif */
+    width: 14%;
+  }
+  .container.archives-ops .archived-table th:nth-child(5),
+  .container.archives-ops .archived-table td:nth-child(5) { /* Précision */
+    width: 22%;
+    word-break: break-word;
+  }
+  .container.archives-ops .archived-table th:nth-child(7),
+  .container.archives-ops .archived-table td:nth-child(7) { /* Concert */
+    width: 28%;
+  }
+
+  /* Actions : étroit et centré */
+  .container.archives-ops .archived-table th:nth-child(8),
+  .container.archives-ops .archived-table td:nth-child(8) {
+    width: 8%;
+    text-align: center;
+  }
+</style>
+
+
+
+<div class="container archives-ops">
   <h1>Opérations archivées - Saison {{ saison }}</h1>
   <button onclick="ouvrirPopupRecherche()" title="Rechercher une opération" style="background:none; border:none; cursor:pointer;">🔍 Recherche par montant</button>
 
@@ -14,31 +71,37 @@
       <h2 class="mois-bandeau">{{ bloc.label }}</h2>
 
       <table class="archived-table" data-month-key="{{ key }}">
-        <thead>
-          <tr>
-            <th id="sort-date-{{ loop.index }}" style="cursor:pointer;">Date ⬍</th>
-            <th>Qui</th>
-            <th>Type</th>
-            <th>Motif</th>
-            <th></th>
-            <th id="sort-montant-{{ loop.index }}" style="cursor:pointer; text-align:right;">Montant ⬍</th>
-            <th>Concert</th>
-            <th style="text-align: center;">Actions</th>
-          </tr>
-        </thead>
+		<thead>
+		  <tr>
+			<th id="sort-date-{{ loop.index }}" style="cursor:pointer;">Date ⬍</th>
+			<th id="sort-qui-{{ loop.index }}" style="cursor:pointer;">Qui ⬍</th>
+			<th>Type</th>
+			<th>Motif</th>
+			<th>Précision</th>
+			<th id="sort-montant-{{ loop.index }}" style="cursor:pointer; text-align:right;">Montant ⬍</th>
+			<th id="sort-concert-{{ loop.index }}" style="cursor:pointer;">Concert ⬍</th>
+			<th style="text-align: center;">Actions</th>
+		  </tr>
+		</thead>
+
         <tbody>
           {% for op in bloc["items"] %}
             {% set motif_lower = (op.motif or '')|lower %}
             {% set type_lower = (op.type or '')|lower %}
-            <tr class="{% if motif_lower == 'commission lionel' %}operation-auto{% endif %}">
-              <td>{{ op.date.strftime('%d/%m/%Y') }}</td>
+            <tr class="{% if motif_lower == 'commission lionel' %}operation-auto {% endif %}{% if op.previsionnel %}is-previsionnel{% endif %}">
+              <td>
+                {{ op.date.strftime('%d/%m/%Y') }}
+                {% if op.previsionnel %}<em class="prev-tag">(prévisionnel)</em>{% endif %}
+              </td>
               <td>{{ op.musicien.prenom }} {{ op.musicien.nom }}</td>
               <td>{{ op.type }}</td>
               <td>{{ op.motif }}</td>
               <td>{{ op.precision or '' }}</td>
               <td style="text-align:right;">
                 {% if type_lower == 'credit' %}+{% else %}-{% endif %}
-                {{ op.montant | format_currency }}
+                <span class="{% if op.previsionnel %}muted-italic{% endif %}">
+                  {{ op.montant | format_currency }}
+                </span>
               </td>
               <td>
                 {% if op.concert %}
@@ -85,46 +148,96 @@
 <script src="{{ url_for('static', filename='js/recherche_operations.js') }}"></script>
 
 <script>
-// tri par colonnes pour CHAQUE tableau mensuel
-function sortTableByColumn(table, columnIndex, numeric = false) {
+/**
+ * Normalise une chaîne pour un tri alpha robuste (minuscule, sans accents, trim).
+ */
+function norm(s) {
+  return (s || "")
+    .toString()
+    .normalize('NFD').replace(/\p{Diacritic}/gu,'')
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Extrait la clé de tri selon le type:
+ * - date: parse "JJ/MM/AAAA"
+ * - amount: nombre en tenant compte des +/−, espaces et "€"
+ * - text: alpha simple
+ * - concert: on ignore la date "JJ/MM/AAAA — " et on trie sur le libellé du lieu
+ */
+function sortKeyFromCell(td, type) {
+  const raw = (td.innerText || td.textContent || '').trim();
+
+  if (type === 'date') {
+    // "JJ/MM/AAAA"
+    const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (!m) return -Infinity;
+    return new Date(`${m[3]}-${m[2]}-${m[1]}`).getTime();
+  }
+
+  if (type === 'amount') {
+    return parseFloat(
+      raw
+        .replace(/\s/g,'')
+        .replace('€','')
+        .replace(',', '.')
+        .replace(/[^\d.\-+]/g,'')
+    ) || 0;
+  }
+
+  if (type === 'concert') {
+    if (raw === '—' || raw === '-') return '';
+    // "JJ/MM/AAAA — Lieu"
+    const parts = raw.split('—');
+    const lieu  = (parts.length > 1 ? parts.slice(1).join('—') : raw);
+    return norm(lieu);
+  }
+
+  // text par défaut
+  return norm(raw);
+}
+
+/**
+ * Trie un tableau HTML par colonne et type.
+ */
+function sortTableByColumn(table, columnIndex, type) {
   const tbody = table.querySelector("tbody");
-  const rows = Array.from(tbody.querySelectorAll("tr"));
-  const key = table.getAttribute("data-month-key") || "";
-  const attrName = `data-sort-${key}-${columnIndex}`;
-  const currentOrder = table.getAttribute(attrName) || "desc";
-  const newOrder = currentOrder === "asc" ? "desc" : "asc";
+  const rows  = Array.from(tbody.querySelectorAll("tr"));
+
+  // état de tri par table/colonne
+  const key       = table.getAttribute("data-month-key") || "";
+  const attrName  = `data-sort-${key}-${columnIndex}`;
+  const current   = table.getAttribute(attrName) || "desc";
+  const newOrder  = current === "asc" ? "desc" : "asc";
+  const factor    = newOrder === "asc" ? 1 : -1;
 
   rows.sort((a, b) => {
-    let valA = a.children[columnIndex].innerText.trim();
-    let valB = b.children[columnIndex].innerText.trim();
+    const ka = sortKeyFromCell(a.children[columnIndex], type);
+    const kb = sortKeyFromCell(b.children[columnIndex], type);
 
-    if (numeric) {
-      // garde les signes +/− et normalise
-      valA = parseFloat(valA.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d\.\-+]/g,''));
-      valB = parseFloat(valB.replace(/\s/g,'').replace('€','').replace(',', '.').replace(/[^\d\.\-+]/g,''));
-    } else {
-      // date JJ/MM/AAAA
-      const [dA, mA, yA] = valA.split("/");
-      const [dB, mB, yB] = valB.split("/");
-      valA = new Date(`${yA}-${mA}-${dA}`).getTime();
-      valB = new Date(`${yB}-${mB}-${dB}`).getTime();
-    }
-    return (newOrder === "asc") ? (valA - valB) : (valB - valA);
+    if (ka < kb) return -1 * factor;
+    if (ka > kb) return  1 * factor;
+    return 0;
   });
 
-  rows.forEach(row => tbody.appendChild(row));
+  rows.forEach(r => tbody.appendChild(r));
   table.setAttribute(attrName, newOrder);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("table.archived-table").forEach((table, i) => {
-    const idDate = `sort-date-${i+1}`;
-    const idMontant = `sort-montant-${i+1}`;
-    const thDate = document.getElementById(idDate);
-    const thMont = document.getElementById(idMontant);
-    if (thDate) thDate.addEventListener("click", () => sortTableByColumn(table, 0, false));
-    if (thMont) thMont.addEventListener("click", () => sortTableByColumn(table, 5, true));
+    const thDate    = document.getElementById(`sort-date-${i+1}`);
+    const thQui     = document.getElementById(`sort-qui-${i+1}`);
+    const thMontant = document.getElementById(`sort-montant-${i+1}`);
+    const thConcert = document.getElementById(`sort-concert-${i+1}`);
+
+    if (thDate)    thDate   .addEventListener("click", () => sortTableByColumn(table, 0, 'date'));
+    if (thQui)     thQui    .addEventListener("click", () => sortTableByColumn(table, 1, 'text'));
+    if (thMontant) thMontant.addEventListener("click", () => sortTableByColumn(table, 5, 'amount'));
+    if (thConcert) thConcert.addEventListener("click", () => sortTableByColumn(table, 6, 'concert'));
   });
 });
 </script>
+
 {% endblock %}
