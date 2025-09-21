@@ -38,28 +38,46 @@
                   {% if readonly_checkboxes %}disabled{% endif %}>
               </td>
               <td>
-                {% if credits_musiciens.get(concert.id) %}
-                  <div class="credits" style="font-size:0.95em; margin-bottom:8px;">
-                    <strong>Participants&nbsp;:</strong>
-                    <ul style="margin:6px 0 4px 16px; padding-left:0;">
-                      {% for mid, credit in credits_musiciens[concert.id].items() %}
-                        {% set m = musiciens_dict[mid] %}
-                        <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
-                      {% endfor %}
-                      <li style="font-weight:600; color:#673ab7;">
-                        ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
-                      </li>
-                    </ul>
-                  </div>
-                {% endif %}
+				{% if credits_musiciens.get(concert.id) %}
+				  <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
+					<strong>Participants&nbsp;:</strong>
+					<ul style="margin:6px 0 4px 16px; padding-left:0;">
+						{% set fpm = frais_par_musicien.get(concert.id, {}) if frais_par_musicien else {} %}
+						{% for mid, credit in credits_musiciens[concert.id].items() %}
+						  {% set m = musiciens_dict[mid] %}
+						  {% set frais_val = fpm.get(mid) %}
+						  <li>
+							{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
+							{% if frais_val is not none and frais_val != 0 %}
+							  <div class="frais-note">frais : {{ (frais_val | float) | abs | format_currency }}</div>
+							{% endif %}
+						  </li>
+						{% endfor %}
 
-                <div class="actions">
-                  <!-- ⚖️ Ajustements / gains fixes -->
-                  <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+					  <li style="font-weight:600; color:#673ab7;">
+						ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
+					  </li>
+					</ul>
+				  </div>
+				{% endif %}
 
-                  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button">✏️</a>
-                  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
-                </div>
+
+				<div class="actions">
+				  <!-- ⚖️ Ajustements / gains fixes -->
+				  <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+
+				  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button" title="Modifier">✏️</a>
+				  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button" title="Participations">👥</a>
+
+				  <!-- 🗑️ Supprimer définitivement le concert (et ses opérations/participations) -->
+				  <form method="post"
+						action="{{ url_for('supprimer_concert', concert_id=concert.id) }}"
+						onsubmit="return confirm('Supprimer définitivement ce concert et toutes ses opérations/participations ?');"
+						style="display:inline;">
+					<button type="submit" class="delete-button" title="Supprimer définitivement">🗑️</button>
+				  </form>
+				</div>
+
               </td>
             </tr>
           {% endfor %}
@@ -89,7 +107,19 @@
   .actions a { margin-right:6px; text-decoration:none; }
 
   /* Boutons harmonisés */
-  .adjust-button,.edit-button,.participation-button{
+  .adjust-button, .edit-button, .participation-button {
+
+.delete-button {
+  background:#dc2626;
+  color:#fff;
+  border:none;
+  padding:6px 10px;
+  border-radius:5px;
+  font-weight:600;
+  cursor:pointer;
+}
+.delete-button:hover { background:#b91c1c; }
+
     padding:6px 10px; border-radius:5px; color:#fff; font-weight:500;
   }
   .adjust-button{ background:#6d28d9; }        .adjust-button:hover{ background:#5b21b6; }
@@ -132,4 +162,14 @@
     });
   });
 </script>
+
+<style>
+  .frais-note{
+    font-size:.85em;
+    color:#6b7280;
+    font-style:italic;
+    margin-left:4px;
+  }
+</style>
+
 {% endblock %}

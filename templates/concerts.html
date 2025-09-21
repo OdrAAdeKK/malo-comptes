@@ -6,6 +6,11 @@
 {% block content %}
 <div class="container" style="margin-top:24px;">
   <h1>Les concerts à venir</h1>
+  <p class="legend">
+    ℹ️ Les <em>frais prévisionnels</em> (gris/italique) sont intégrés au calcul de la
+    <strong>Prévision (net)</strong> tant que le concert n’est pas marqué comme <strong>payé</strong>.
+    À la validation du paiement, ces prévisions sont automatiquement supprimées.
+  </p>
 
   {% if groupes and groupes|length > 0 %}
     {% for key, bloc in groupes.items() %}
@@ -36,25 +41,38 @@
               {% endif %}
             </td>
 
+            {# --- FRAIS + prévisionnels en gris/italique si non payé --- #}
             <td class="col-amount">
               <span style="color:#888;">
                 {{ concert.frais | format_currency if concert.frais is not none else '' }}
               </span>
+              {% if not concert.paye and concert.frais_previsionnels %}
+                <span style="color:#6b7280; font-style:italic;">
+                  + {{ concert.frais_previsionnels | format_currency }} (prévision)
+                </span>
+              {% endif %}
             </td>
 
-            {# --- Prévision (net) basée en priorité sur recette_attendue --- #}
+            {# --- Prévision (net) : base – (frais réels + frais prévisionnels si non payé) --- #}
             <td class="col-amount">
               {% set base = (concert.recette_attendue if concert.recette_attendue is not none else (concert.recette if concert.recette is not none else None)) %}
               {% if base is not none %}
-                {% set net = (base or 0) - (concert.frais or 0) %}
+                {% set frais_app = (concert.frais or 0) + ((concert.frais_previsionnels or 0) if not concert.paye else 0) %}
+                {% set net = (base or 0) - frais_app %}
                 <span style="font-weight:600; color:{{ '#d32f2f' if net < 0 else '#444' }};">
                   {{ net | format_currency }}
                 </span>
-                {% if concert.frais %}
-                  <div class="subnote">
-                    ({{ base | format_currency }} attendus – {{ concert.frais | format_currency }} frais)
-                  </div>
-                {% endif %}
+
+                <div class="subnote">
+                  ({{ base | format_currency }} attendus
+                   – {{ concert.frais | format_currency if concert.frais else '0,00 €' }} frais
+                   {% if not concert.paye and concert.frais_previsionnels %}
+                     – <span style="color:#6b7280; font-style:italic;">
+                         {{ concert.frais_previsionnels | format_currency }} (prévision)
+                       </span>
+                   {% endif %}
+                  )
+                </div>
               {% endif %}
             </td>
 
@@ -67,20 +85,27 @@
             </td>
 
             <td class="col-actions">
-              {% if credits_musiciens.get(concert.id) %}
-                <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
-                  <strong>Participants&nbsp;:</strong>
-                  <ul style="margin:6px 0 4px 16px; padding-left:0;">
-                    {% for mid, credit in credits_musiciens[concert.id].items() %}
-                      {% set m = musiciens_dict[mid] %}
-                      <li>{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}</li>
-                    {% endfor %}
-                    <li style="font-weight:600; color:#673ab7;">
-                      ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
-                    </li>
-                  </ul>
-                </div>
-              {% endif %}
+				{% if credits_musiciens.get(concert.id) %}
+				  <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
+					<strong>Participants&nbsp;:</strong>
+					<ul style="margin:6px 0 4px 16px; padding-left:0;">
+					  {% set fpm = frais_par_musicien.get(concert.id, {}) if frais_par_musicien else {} %}
+					  {% for mid, credit in credits_musiciens[concert.id].items() %}
+						{% set m = musiciens_dict[mid] %}
+						<li>
+						  {{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
+						  {% if fpm.get(mid) %}
+							<div class="frais-note">frais : {{ fpm.get(mid) | float | round(2) | format_currency }}</div>
+						  {% endif %}
+						</li>
+					  {% endfor %}
+					  <li style="font-weight:600; color:#673ab7;">
+						ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
+					  </li>
+					</ul>
+				  </div>
+				{% endif %}
+
 
               <div class="actions">
                 <!-- ⚖️ Ajustements / gains fixes -->
@@ -121,6 +146,7 @@
     background: white; padding: 30px; border-radius: 10px;
     box-shadow: 0 0 10px rgba(0,0,0,0.1); max-width: 1200px; width: 100%;
   }
+  .legend { color:#555; margin: 6px 0 16px; }
   h2 { font-size: 1.2rem; color:#333; }
   table { width: 100%; border-collapse: collapse; margin-bottom: 26px; table-layout: fixed; }
   th, td { padding: 10px; border-bottom: 1px solid #ddd; }
@@ -186,4 +212,14 @@ document.querySelectorAll('.paye-checkbox').forEach(function(box) {
   });
 });
 </script>
+
+<style>
+  .frais-note{
+    font-size:.85em;
+    color:#6b7280;
+    font-style:italic;
+    margin-left:4px;
+  }
+</style>
+
 {% endblock %}

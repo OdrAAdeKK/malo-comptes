@@ -2,151 +2,165 @@
 <html>
 <head>
   <meta charset="utf-8">
-  		  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   <title>Comptes</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    background: #f5f5f5;
-    padding: 50px;
-    display: flex;
-    justify-content: center;
-  }
-  .container {
-    background: white;
-    padding: 30px;
-    border-radius: 10px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-    max-width: 900px;
-    width: 100%;
-  }
-  h1 {
-    font-size: 2.3em;
-    text-align: center;
-    margin-bottom: 32px;
-    color: #263040;
-    font-weight: 800;
-    letter-spacing: 1px;
-  }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 24px;
-  }
-  th, td {
-    text-align: left;
-    padding: 12px 14px;
-    border-bottom: 1px solid #e8e8e8;
-    font-size: 1.14em;
-  }
-  th {
-    background-color: #f4f7fa;
-    color: #263040;
-    font-weight: 700;
-    letter-spacing: 0.7px;
-    font-size: 1.12em;
-    text-transform: uppercase;
-  }
-  tr:hover {
-    background-color: #f6f8fc;
-  }
-  .structure-row td {
-    font-weight: bold;
-    background: #e8f0fe;
-    color: #222;
-    border-bottom: 1px solid #cdd6e6;
-    padding-top: 12px;
-    padding-bottom: 12px;
-  }
-  .asso7-row td {
-    background: #e3efff !important;
-    font-weight: bold;
-    color: #222;
-  }
-  .cbasso7-row td {
-    background: #d5f5d5 !important;
-    font-weight: bold;
-    color: #218838;
-  }
-
-
-  @media (max-width: 850px) {
-    .button-row { flex-direction: column; gap: 14px; }
-    .back-button, .reports-button, .lionel-button, .musiciens-button { width: 100%; min-width: 0; }
-  }
-  th, td {
-  padding: 13px 12px;
-  border-bottom: 1px solid #ececec;
-  font-size: 1.09em;
-	}
-	th {
-	  text-align: center; /* Centrage des titres */
-	}
-	td.credit, td.gains, td.potentiel {
-	  text-align: center; /* Centrage des valeurs numériques */
-	  font-variant-numeric: tabular-nums;
-	}
-	    th, td {
-        padding: 12px 16px;
-        font-size: 1.13em;
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 50px;
+      display: flex;
+      justify-content: center;
     }
-    th:not(:first-child), td:not(:first-child) {
-        text-align: center;
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      max-width: 900px;
+      width: 100%;
     }
-    th:first-child, td:first-child {
-        text-align: left;
+    h1 {
+      font-size: 2.3em;
+      text-align: center;
+      margin-bottom: 10px;
+      color: #263040;
+      font-weight: 800;
+      letter-spacing: 1px;
     }
-	.operations-button {
-	  background-color: #26bfa6;
-	  color: #fff;
-	}
-	.operations-button:hover {
-	  background-color: #1ca790;
-	  color: #fff;
-	}
+    .legend {
+      margin: 6px 0 22px;
+      color: #5b6472;
+      font-size: 0.95em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+    }
+    th, td {
+      text-align: left;
+      padding: 12px 14px;
+      border-bottom: 1px solid #e8e8e8;
+      font-size: 1.14em;
+    }
+    th {
+      background-color: #f4f7fa;
+      color: #263040;
+      font-weight: 700;
+      letter-spacing: 0.7px;
+      font-size: 1.12em;
+      text-transform: uppercase;
+      text-align: center; /* Centrage des titres */
+    }
+    tr:hover { background-color: #f6f8fc; }
 
-</style>
+    .structure-row td {
+      font-weight: bold;
+      background: #e8f0fe;
+      color: #222;
+      border-bottom: 1px solid #cdd6e6;
+      padding-top: 12px;
+      padding-bottom: 12px;
+    }
+    .asso7-row td {
+      background: #e3efff !important;
+      font-weight: bold;
+      color: #222;
+    }
+    .cbasso7-row td {
+      background: #d5f5d5 !important;
+      font-weight: bold;
+      color: #218838;
+    }
+
+    @media (max-width: 850px) {
+      .button-row { flex-direction: column; gap: 14px; }
+      .back-button, .reports-button, .lionel-button, .musiciens-button { width: 100%; min-width: 0; }
+    }
+    th, td {
+      padding: 13px 12px;
+      border-bottom: 1px solid #ececec;
+      font-size: 1.09em;
+    }
+    td.credit, td.gains, td.potentiel {
+      text-align: center; /* Centrage des valeurs numériques */
+      font-variant-numeric: tabular-nums;
+    }
+    th, td { padding: 12px 16px; font-size: 1.13em; }
+    th:not(:first-child), td:not(:first-child) { text-align: center; }
+    th:first-child, td:first-child { text-align: left; }
+
+    .operations-button { background-color: #26bfa6; color: #fff; }
+    .operations-button:hover { background-color: #1ca790; color: #fff; }
+
+    /* Sous-note gris/italique pour les prévisionnels */
+    .subnote {
+      margin-top: 4px;
+      font-size: 0.88em;
+      color: #6b7280;
+      font-style: italic;
+      line-height: 1.25;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
     <h1>Comptes</h1>
+<p class="legend">
+  ℹ️ <em>Gains à venir</em> = recettes attendues (concerts non payés) + éventuels frais prévisionnels (débits) saisis sur les concerts. Les <em>gains prévisionnels</em> disparaissent automatiquement quand un concert est validé payé.
+</p>
+
     <table>
-<thead>
-  <tr>
-    <th>Musicien / Compte</th>
-    <th>Crédit actuel</th>
-    <th>Gains à venir</th>
-    <th>Crédit potentiel</th>
-  </tr>
-</thead>
-<tbody>
-  {% for compte in tableau_comptes %}
-    {% if loop.first %}
-      {# rien #}
-    {% elif compte.nom == 'ASSO7' %}
-      <tr><td colspan="4" style="height:8px;background:#fff;"></td></tr>
-    {% endif %}
-    <tr
-      {% if compte.nom == 'ASSO7' %}class="asso7-row"{% endif %}
-      {% if compte.nom == 'CB ASSO7' %}class="cbasso7-row"{% endif %}
-      {% if compte.nom == 'CAISSE ASSO7' %}style="background:#f9ffe6;font-weight:bold;color:green;"{% endif %}
-      {% if compte.nom == 'TRESO ASSO7' %}style="background:#fff4e6;font-weight:bold;color:#3051c7;"{% endif %}
-    >
-      <td>{{ compte.nom }}</td>
-	<td class="credit">{{ format_currency(compte.credit) }}</td>
-	<td class="gains">{{ format_currency(compte.gains_a_venir) }}</td>
-	<td class="potentiel">{{ format_currency(compte.credit_potentiel) }}</td>
-    </tr>
-  {% endfor %}
-</tbody>
+      <thead>
+        <tr>
+          <th>Musicien / Compte</th>
+          <th>Crédit actuel</th>
+          <th>Gains à venir</th>
+          <th>Crédit potentiel</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for compte in tableau_comptes %}
+          {% if loop.first %}
+            {# rien #}
+          {% elif compte.nom == 'ASSO7' %}
+            <tr><td colspan="4" style="height:8px;background:#fff;"></td></tr>
+          {% endif %}
+          <tr
+            {% if compte.nom == 'ASSO7' %}class="asso7-row"{% endif %}
+            {% if compte.nom == 'CB ASSO7' %}class="cbasso7-row"{% endif %}
+            {% if compte.nom == 'CAISSE ASSO7' %}style="background:#f9ffe6;font-weight:bold;color:green;"{% endif %}
+            {% if compte.nom == 'TRESO ASSO7' %}style="background:#fff4e6;font-weight:bold;color:#3051c7;"{% endif %}
+          >
+            <td>{{ compte.nom }}</td>
+
+            <td class="credit">{{ format_currency(compte.credit) }}</td>
+
+            <td class="gains">
+              {{ format_currency(compte.gains_a_venir) }}
+              {# Sous-note prévisionnels : on l’affiche si la clé existe et non nulle #}
+              {% set prev = (compte.previsionnels_total if compte.previsionnels_total is defined else 0) %}
+              {% if prev %}
+                <div class="subnote">
+                  inclut frais prévisionnels&nbsp;: {{ format_currency(prev) }}
+                </div>
+              {% endif %}
+            </td>
+
+            <td class="potentiel">{{ format_currency(compte.credit_potentiel) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
     </table>
-	<div class="button-row">
-	  <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-	  <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-	  <a href="{{ url_for('reports') }}" class="reports-button">Reports</a>
-	  <a href="{{ url_for('operations_a_venir') }}" class="operations-button">Opérations à venir</a>
-	  <a href="{{ url_for('liste_musiciens') }}" class="musiciens-button">Musiciens</a>
-	</div>
+
+    <div class="button-row">
+      <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
+      <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+      <a href="{{ url_for('reports') }}" class="reports-button">Reports</a>
+      <a href="{{ url_for('operations_a_venir') }}" class="operations-button">Opérations à venir</a>
+      <a href="{{ url_for('liste_musiciens') }}" class="musiciens-button">Musiciens</a>
+    </div>
   </div>
 </body>
 </html>

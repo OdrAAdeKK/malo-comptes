@@ -104,6 +104,7 @@ from mes_utils import (
     ajouter_cachets, formulaire_to_data, enregistrer_operation_en_db,
     valider_concert_par_operation, concert_to_dict, get_debut_fin_saison,
     get_ordered_comptes_bis, get_reports_dict, extraire_infos_depuis_pdf, regrouper_cachets_par_mois,
+    ensure_op_frais_previsionnels, detach_prevision_if_needed,
 )
 
 COULEURS_MOIS = {
@@ -242,6 +243,8 @@ def supprimer_musicien(musicien_id):
 
 from sqlalchemy import func  # en haut si pas déjà importé
 from mes_utils import grouper_par_mois, get_credits_concerts_from_db
+from collections import defaultdict                 # ← NEW
+from models import Operation                         # ← NEW
 
 @app.route('/concerts')
 def liste_concerts():
@@ -261,6 +264,28 @@ def liste_concerts():
     # Regroupement par mois pour le template
     groupes = grouper_par_mois(concerts, "date", descending=False)
 
+    # --- NEW: frais par musicien et par concert (hors prévisionnels globaux CB/CAISSE) ---
+    concert_ids = [c.id for c in concerts]
+    frais_par_musicien = defaultdict(dict)
+    if concert_ids:
+        rows = (
+            db.session.query(
+                Operation.concert_id,
+                Operation.musicien_id,
+                func.sum(Operation.montant).label("total"),
+            )
+            .filter(
+                Operation.concert_id.in_(concert_ids),
+                func.lower(Operation.motif) == "frais",
+                Operation.previsionnel.is_(False),          # on ignore les frais prévisionnels globaux
+                Operation.musicien_id.isnot(None)           # seulement des frais rattachés à un musicien
+            )
+            .group_by(Operation.concert_id, Operation.musicien_id)
+            .all()
+        )
+        for cid, mid, total in rows:
+            frais_par_musicien[cid][mid] = float(total or 0.0)
+
     # (optionnel) petit log de diag :
     try:
         app.logger.info(f"[concerts] {len(concerts)} à venir – ids/dates: " +
@@ -274,7 +299,8 @@ def liste_concerts():
         groupes=groupes,            # ← à utiliser pour l’affichage par mois
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
-        musiciens_dict=musiciens_dict
+        musiciens_dict=musiciens_dict,
+        frais_par_musicien=frais_par_musicien   # ← NEW
     )
 
 
@@ -289,6 +315,9 @@ def ajouter_concert():
         recette = float(recette_str) if recette_str else None
         paye = 'paye' in request.form
         mode_paiement_prevu = request.form.get('mode_paiement_prevu', 'CB ASSO7')
+
+        # (NEW) Frais prévisionnels saisis (peut être vide)
+        frais_prev_str = (request.form.get('frais_previsionnels') or '').strip()
 
         # Création du concert
         concert = Concert(
@@ -306,10 +335,15 @@ def ajouter_concert():
 
         db.session.add(concert)
         db.session.commit()
+        db.session.refresh(concert)  # garantir concert.id
 
-        db.session.refresh(concert)  # <- forcer la mise à jour en base
+        # (NEW) Si NON payé → créer/mettre à jour l'opération "Frais (prévisionnels)" liée
+        if not paye:
+            # import local pour être 100% sûr même si l'import global a été oublié
+            from mes_utils import ensure_op_frais_previsionnels
+            ensure_op_frais_previsionnels(concert.id, frais_prev_str)
 
-        # Si payé, créer une opération de crédit
+        # Si payé, créer une opération de crédit (recette réelle)
         if paye and mode_paiement_prevu and recette:
             from models import Musicien, Operation
             compte = Musicien.query.filter_by(nom=mode_paiement_prevu).first()
@@ -325,13 +359,14 @@ def ajouter_concert():
                 db.session.add(op)
                 db.session.commit()
 
+        # Recalcul des crédits potentiels / à venir (si tu l'utilises)
         from calcul_participations import mettre_a_jour_credit_calcule_potentiel
         mettre_a_jour_credit_calcule_potentiel()
-
 
         return redirect(url_for('liste_participations', concert_id=concert.id))
 
     return render_template('ajouter_concert.html')
+
 
 
 @app.route('/concert/modifier/<int:concert_id>', methods=['GET', 'POST'])
@@ -341,7 +376,10 @@ def modifier_concert(concert_id):
     if request.method == 'POST':
         concert.date = date.fromisoformat(request.form['date'])
         concert.lieu = request.form['lieu']
-        recette_input = request.form['recette']
+
+        # Tolérant aux virgules
+        recette_input = (request.form.get('recette') or '').strip()
+        recette_input = recette_input.replace(',', '.') if recette_input else ''
 
         if recette_input:
             recette_float = float(recette_input)
@@ -356,6 +394,16 @@ def modifier_concert(concert_id):
             concert.recette_attendue = None
 
         db.session.commit()
+
+        # --- NEW: Frais prévisionnels ---
+        from mes_utils import ensure_op_frais_previsionnels
+        frais_prev_str = (request.form.get('frais_previsionnels') or '').strip()
+        if not concert.paye:
+            # Si le concert n'est PAS payé -> on crée/MAJ/supprime l'opé prévisionnelle selon la saisie
+            ensure_op_frais_previsionnels(concert.id, frais_prev_str)
+        else:
+            # Si le concert est payé -> aucune prévision ne doit subsister
+            ensure_op_frais_previsionnels(concert.id, None)
 
         # 🔁 Mise à jour automatique des crédits potentiels
         from calcul_participations import mettre_a_jour_credit_calcule_potentiel
@@ -375,8 +423,26 @@ def modifier_concert(concert_id):
         else:
             return redirect(url_for('liste_concerts'))
 
+    # ---- GET : pré-remplir la valeur du champ "Recette"
+    def _fmt_fr(x):
+        if x is None:
+            return ""
+        try:
+            return f"{float(x):.2f}".replace(".", ",")  # ex: 550,00
+        except Exception:
+            return str(x)
+
+    # priorité à la recette_attendue si présente, sinon la recette réelle
+    recette_init_val = concert.recette_attendue if concert.recette_attendue is not None else concert.recette
+
     retour_url = url_for('liste_concerts')
-    return render_template('modifier_concert.html', concert=concert, retour_url=retour_url)
+    return render_template(
+        'modifier_concert.html',
+        concert=concert,
+        retour_url=retour_url,
+        recette_initiale=_fmt_fr(recette_init_val),   # 👈 envoyé au template
+    )
+
 
 
 
@@ -431,6 +497,8 @@ from mes_utils import grouper_par_mois, get_credits_concerts_from_db
 
 @app.route('/concerts_non_payes')
 def concerts_non_payes_view():
+    from collections import defaultdict  # local pour éviter les effets de bord
+
     # passés et non payés
     concerts = (
         Concert.query
@@ -449,13 +517,37 @@ def concerts_non_payes_view():
 
     groupes = grouper_par_mois(concerts, "date", descending=False)
 
+    # --- frais par musicien et par concert (on ignore les prévisionnels globaux) ---
+    concert_ids = [c.id for c in concerts]
+    frais_par_musicien = defaultdict(dict)
+    if concert_ids:
+        rows = (
+            db.session.query(
+                Operation.concert_id,
+                Operation.musicien_id,
+                func.sum(Operation.montant).label("total"),
+            )
+            .filter(
+                Operation.concert_id.in_(concert_ids),
+                func.lower(Operation.motif) == "frais",
+                Operation.previsionnel.is_(False),     # exclut les frais « prévisionnels »
+                Operation.musicien_id.isnot(None)      # uniquement des frais rattachés à un musicien
+            )
+            .group_by(Operation.concert_id, Operation.musicien_id)
+            .all()
+        )
+        for cid, mid, total in rows:
+            frais_par_musicien[cid][mid] = float(total or 0.0)
+
     return render_template(
         "concerts_non_payes.html",
         groupes=groupes,
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
-        musiciens_dict=musiciens_dict
+        musiciens_dict=musiciens_dict,
+        frais_par_musicien=frais_par_musicien  # ← NEW
     )
+
 
 
 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
@@ -464,6 +556,9 @@ from sqlalchemy import func  # si pas déjà importé
 
 @app.route('/concerts/<int:concert_id>/toggle_paye', methods=['POST'])
 def toggle_concert_paye(concert_id):
+    from mes_utils import creer_recette_concert_si_absente, supprimer_recette_concert_pour_concert
+    from models import Operation
+
     concert = Concert.query.get(concert_id)
     if not concert:
         return "Concert non trouvé", 404
@@ -474,15 +569,69 @@ def toggle_concert_paye(concert_id):
 
     if etat_cible:
         # ===== NON PAYÉ -> PAYÉ =====
-        concert.paye = True
-        db.session.commit()
-        db.session.refresh(concert)
+        try:
+            # 1) recette finale = recette existante, sinon recette_attendue, sinon 0
+            if concert.recette is None:
+                if concert.recette_attendue is not None:
+                    concert.recette = float(concert.recette_attendue or 0.0)
+                else:
+                    concert.recette = float(concert.recette or 0.0)
 
-        from calcul_participations import mettre_a_jour_credit_calcule_reel_pour_concert
-        print(f"[✓] Recalcul crédit CALCULÉ pour concert payé id={concert.id}")
-        mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
+            # 2) marquer payé & nettoyer l'attendu
+            concert.paye = True
+            concert.recette_attendue = None
 
-        return redirect(url_for('archives_concerts'))
+            # 3) créer l’opération "Recette concert" si absente
+            mode_final = (getattr(concert, "mode_paiement_prevu", "") or "CB ASSO7").strip()
+            creer_recette_concert_si_absente(
+                concert_id=concert.id,
+                montant=float(concert.recette or 0.0),
+                date_op=None,
+                mode=mode_final
+            )
+
+            # 4) 🔥 purge des opérations PRÉVISIONNELLES + reset du champ prévisionnel
+            removed = 0
+
+            # 4.a) si on a mémorisé une op spécifique
+            if getattr(concert, "op_prevision_frais_id", None):
+                op_prev = Operation.query.get(concert.op_prevision_frais_id)
+                if op_prev:
+                    db.session.delete(op_prev)
+                    removed += 1
+                concert.op_prevision_frais_id = None
+
+            # 4.b) ceinture et bretelles : supprimer toute op prévisionnelle pour ce concert
+            ops_prev = Operation.query.filter_by(concert_id=concert.id, previsionnel=True).all()
+            for op in ops_prev:
+                db.session.delete(op)
+                removed += 1
+
+            # 4.c) remettre le champ à None (ou 0.0 si tu préfères)
+            concert.frais_previsionnels = None
+
+            db.session.add(concert)
+            db.session.commit()
+            db.session.refresh(concert)
+
+            if removed:
+                print(f"[i] toggle_paye: {removed} opération(s) prévisionnelle(s) supprimée(s) (concert_id={concert.id})")
+
+            # 5) Recalcul (réel) + (optionnel) potentiel global
+            from calcul_participations import mettre_a_jour_credit_calcule_reel_pour_concert
+            mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
+            try:
+                from calcul_participations import mettre_a_jour_credit_calcule_potentiel
+                mettre_a_jour_credit_calcule_potentiel()
+            except Exception:
+                pass
+
+            return redirect(url_for('archives_concerts'))
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Erreur lors du passage NON PAYÉ -> PAYÉ pour concert {concert.id}: {e}")
+            return "Erreur serveur", 500
 
     else:
         # ===== PAYÉ -> NON PAYÉ =====
@@ -494,8 +643,7 @@ def toggle_concert_paye(concert_id):
                 except Exception:
                     concert.recette_attendue = 0.0
 
-            # 2) Supprimer l'opération 'Recette concert' liée (quoi qu'il arrive)
-            from mes_utils import supprimer_recette_concert_pour_concert
+            # 2) Supprimer l'opération 'Recette concert' liée (idempotent)
             nb_suppr = supprimer_recette_concert_pour_concert(concert.id)
             print(f"[INFO] toggle_paye: {nb_suppr} 'Recette concert' supprimée(s) pour concert_id={concert.id}")
 
@@ -506,7 +654,7 @@ def toggle_concert_paye(concert_id):
             db.session.commit()
             db.session.refresh(concert)
 
-            # 4) Recalcul : crédit POTENTIEL
+            # 4) Recalcul : crédit POTENTIEL pour CE concert (avec frais prévisionnels pris en compte par l'étape 10)
             from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
             print(f"[✓] Recalcul crédit POTENTIEL pour concert non payé id={concert.id}")
             mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
@@ -519,30 +667,32 @@ def toggle_concert_paye(concert_id):
             return "Erreur serveur", 500
 
 
+
 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
 
 @app.route("/valider_paiement_concert", methods=["POST"])
 def valider_paiement_concert():
     from mes_utils import creer_recette_concert_si_absente
     from calcul_participations import mettre_a_jour_credit_calcule_reel_pour_concert
+    from models import Operation  # 👈 pour supprimer les prévisionnels
 
     data = request.get_json(silent=True) or {}
     concert_id = data.get("concert_id")
-    compte = (data.get("compte") or "").strip()  # "Compte" / "Espèces" (ou vide)
-    recette_raw = data.get("recette")            # peut être str avec virgule
+    compte = (data.get("compte") or "").strip()
+    recette_raw = data.get("recette")
 
     concert = Concert.query.get(concert_id)
     if not concert:
         return jsonify(success=False, message="Concert introuvable"), 404
 
     try:
-        # 1) Déterminer la recette finale (priorité au POST, sinon à la prévision)
         def _to_float(x):
             if x is None:
                 return None
             s = str(x).strip().replace(",", ".")
             return float(s) if s else None
 
+        # 1) recette finale
         recette_post = _to_float(recette_raw)
         if recette_post is not None:
             concert.recette = recette_post
@@ -551,36 +701,55 @@ def valider_paiement_concert():
         else:
             concert.recette = float(concert.recette or 0.0)
 
-        # 2) Marquer payé + nettoyer la prévision
+        # 2) marquer payé
         concert.paye = True
         concert.recette_attendue = None
 
-        # 3) Déterminer le mode de paiement final
-        #    - priorité à "compte" transmis par le front
-        #    - sinon, fallback au champ du concert s'il existe
+        # 3) mode de paiement
         mode_final = (compte or getattr(concert, "mode_paiement_prevu", "") or "Compte").strip()
 
-        # 4) Créer l'opération "Recette concert" si absente (idempotent)
+        # 4) créer l’opération recette si absente
         creer_recette_concert_si_absente(
             concert_id=concert.id,
             montant=concert.recette,
-            date_op=None,   # prendra la date du concert (ou today si non dispo)
+            date_op=None,
             mode=mode_final
         )
 
-        # 5) Commit des changements (concert + éventuelle op créée/mise à jour)
-        db.session.commit()
+        # 5) 🔥 PURGE des opérations PRÉVISIONNELLES liées + reset des frais prévisionnels
+        ops_prev = Operation.query.filter_by(concert_id=concert.id, previsionnel=True).all()
+        removed = 0
+        for op in ops_prev:
+            db.session.delete(op)
+            removed += 1
+        concert.frais_previsionnels = 0.0
 
-        # 6) Recalculs alignés "concert payé" (crédit RÉEL)
+        db.session.commit()
+        if removed:
+            print(f"[i] {removed} opération(s) prévisionnelle(s) supprimée(s) pour concert {concert.id}")
+
+        # 6) recalculs (crédit RÉEL)
         try:
             db.session.expire_all()
             mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
             db.session.commit()
         except Exception as e:
-            # On log, mais on ne bloque pas la réponse au front si la création op a réussi
             print(f"⚠️ Recalcul crédit réel échoué pour concert {concert.id} : {e}")
 
-        return jsonify(success=True)
+        # 7) Redirection vers l’archive de la saison
+        d = (concert.date or datetime.utcnow().date())
+        start_year = d.year if d.month >= 9 else d.year - 1
+        season_label = f"{start_year}-{start_year+1}"
+        try:
+            redirect_url = url_for("archives_concerts_saison", saison=season_label)
+        except Exception:
+            try:
+                redirect_url = url_for("archives_concerts") + f"#saison-{season_label}"
+            except Exception:
+                redirect_url = url_for("archives_concerts")
+
+        return jsonify(success=True, redirect_url=redirect_url, season_label=season_label)
+
     except Exception as e:
         db.session.rollback()
         return jsonify(success=False, message=str(e)), 400
@@ -833,10 +1002,6 @@ def ajuster_gains():
 
 # --------- CRUD OPERATIONS ---------
     
-# Nouveau app.py (extrait avec route /operations refactorée)
-
-
-
 
 from flask import request, render_template, redirect, url_for, flash
 from datetime import date
@@ -846,24 +1011,77 @@ def operations():
     if request.method == 'POST':
         # -------- TRAITEMENT DU FORMULAIRE --------
         data = request.form.to_dict()
+
         # Conversion de la date en format ISO si besoin
         if "/" in data.get("date", ""):
             try:
                 jour, mois, annee = data["date"].split("/")
                 data["date"] = f"{annee}-{mois.zfill(2)}-{jour.zfill(2)}"
             except Exception as e:
-                print("Erreur de conversion date :", data["date"], e)
+                print("Erreur de conversion date :", data.get("date"), e)
                 flash("Erreur de conversion de la date", "danger")
                 return redirect(url_for('operations'))
-        print("DATA POST:", data)
+
+        # --- Règle spéciale : "Remboursement frais divers" pour un MUSICIEN ---
+        motif_norm = (data.get("motif") or "").strip().lower()
+
+        # id du "Qui" (nom du champ selon ton formulaire)
+        qui_raw = data.get("musicien_id") or data.get("musicien") or data.get("qui") or ""
+        try:
+            mid = int(str(qui_raw).strip()) if qui_raw else None
+        except Exception:
+            mid = None
+
+        m = Musicien.query.get(mid) if mid else None
+        is_musicien = bool(m and (m.type != "structure"))
+
+        if is_musicien and motif_norm == "remboursement frais divers":
+            # type / nature / montant
+            data["type"] = "debit"
+            data.setdefault("nature", "frais")
+            if "montant" in data and data["montant"] is not None:
+                try:
+                    data["montant"] = str(abs(float(str(data["montant"]).replace(",", "."))))
+                except Exception:
+                    pass
+
+            # concert obligatoire
+            cid_raw = data.get("concert_id")
+            try:
+                cid = int(str(cid_raw).strip()) if cid_raw else None
+            except Exception:
+                cid = None
+
+            if not cid:
+                flash("Choisis un concert pour un remboursement de frais divers.", "warning")
+                return redirect(url_for('operations'))
+
+            concert = Concert.query.get(cid)
+            if not concert:
+                flash("Concert introuvable pour l'opération.", "danger")
+                return redirect(url_for('operations'))
+
+            # Date : si vide -> date du concert
+            if not (data.get("date") and str(data["date"]).strip()):
+                data["date"] = concert.date.isoformat()
+
+            # Pas de brut pour ce motif
+            data.pop("brut", None)
+
+        print("DATA POST (après normalisation):", data)
         enregistrer_operation_en_db(data)
-        
+
+        # Recalcul potentiel si lié à un concert
         if data.get('concert_id'):
-            from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
-            mettre_a_jour_credit_calcule_potentiel_pour_concert(data['concert_id'])
+            try:
+                cid = int(str(data['concert_id']).strip())
+                from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(cid)
+            except Exception as e:
+                print("⚠️ Recalcul potentiel ignoré (concert_id invalide) :", e)
 
-
-        if data.get('motif') == 'Recette concert' and data.get('concert_id'):
+        # Validation éventuelle des recettes
+        if (data.get('motif') == 'Recette concert') and data.get('concert_id'):
             valider_concert_par_operation(data['concert_id'], data['montant'])
 
         flash("✅ Opération enregistrée", "success")
@@ -909,46 +1127,114 @@ def operations():
 
 @app.route('/modifier_operation/<int:id>', methods=['GET', 'POST'])
 def modifier_operation(id):
+    # ✅ Importer ici (une seule fois) pour éviter les UnboundLocalError
+    from models import Concert, Musicien, Operation
+    from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+
     operation = Operation.query.get_or_404(id)
 
     if request.method == 'POST':
-        modifier_operation_en_db(id, request.form)
-        concert_id = request.form.get('concert_id')
+        data = request.form.to_dict()
+
+        # 1) Date "JJ/MM/AAAA" → "YYYY-MM-DD"
+        if "/" in data.get("date", ""):
+            try:
+                j, m, a = data["date"].split("/")
+                data["date"] = f"{a}-{m.zfill(2)}-{j.zfill(2)}"
+            except Exception as e:
+                app.logger.warning(f"[modifier_operation] Conversion date échouée: {data.get('date')} ({e})")
+                flash("Erreur de conversion de la date", "danger")
+                return redirect(url_for('modifier_operation', id=id))
+
+        # 2) Règles métier
+        motif_norm = (data.get("motif") or "").strip().lower()
+
+        # Radios → hidden "type"
+        tv = (data.get("type_visible") or "").strip().lower()
+        if tv in ("credit", "debit"):
+            data["type"] = tv
+
+        # “musicien” est un libellé ("Prénom Nom" ou une structure)
+        qui_raw = (data.get("musicien") or "").strip()
+        is_structure = qui_raw in ("ASSO7", "CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7")
+
+        # — Remboursement frais divers (toujours DEBIT, concert requis, brut ignoré) —
+        if (not is_structure) and motif_norm == "remboursement frais divers":
+            data["type"] = "debit"
+            data.setdefault("nature", "frais")
+
+            if "montant" in data and data["montant"] is not None:
+                try:
+                    data["montant"] = str(abs(float(str(data["montant"]).replace(",", "."))))
+                except Exception:
+                    pass
+
+            cid_raw = data.get("concert_id")
+            try:
+                cid = int(str(cid_raw).strip()) if cid_raw else None
+            except Exception:
+                cid = None
+
+            if not cid:
+                flash("Choisis un concert pour un remboursement de frais divers.", "warning")
+                return redirect(url_for('modifier_operation', id=id))
+
+            # Si date vide → date du concert
+            if not (data.get("date") and str(data["date"]).strip()):
+                c = Concert.query.get(cid)
+                if c:
+                    data["date"] = c.date.isoformat()
+
+            data.pop("brut", None)  # non pertinent ici
+
+        # 3) Mise à jour en base
+        modifier_operation_en_db(id, data)
+
+        # 4) Recalcul du potentiel pour le concert lié (nouveau ou inchangé)
+        try:
+            cid_for_recalc = data.get("concert_id") or (operation.concert_id if operation else None)
+            if cid_for_recalc:
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(int(str(cid_for_recalc)))
+        except Exception as e:
+            app.logger.warning(f"[modifier_operation] Recalcul potentiel ignoré: {e}")
 
         flash("✅ Opération modifiée avec succès", "success")
-        return redirect(url_for('archives_operations_saison', saison_url=saison_from_date(operation.date).replace("/", "-")))
+        return redirect(url_for(
+            'archives_operations_saison',
+            saison_url=saison_from_date(operation.date).replace("/", "-")
+        ))
 
+    # ------------ GET : chargement du formulaire ------------
     musiciens = Musicien.query.order_by(Musicien.prenom, Musicien.nom).all()
     concerts = Concert.query.order_by(Concert.date).all()
 
-    # 🔧 Convertir en dictionnaires avant d'appeler la fonction de séparation
     musiciens_dicts = [musicien_to_dict(m) for m in musiciens]
     musiciens_normaux, structures = separer_structures_et_musiciens(musiciens_dicts)
 
     concerts_js = preparer_concerts_js(concerts)
-    concertsData = preparer_concerts_data()
+    concerts_par_musicien = preparer_concerts_par_musicien()
+
     today_str = date.today().isoformat()
 
     return render_template(
         'form_operations.html',
         titre_formulaire="Modifier une opération",
         operation=operation,
-        musiciens=musiciens_dicts,  # ✔ pour template
+        musiciens=musiciens_dicts,
         musiciens_normaux=musiciens_normaux,
         structures=structures,
         concerts_js=concerts_js,
-        concertsData=concertsData,
         current_date=today_str,
         is_modification=True,
-        concerts_par_musicien={},
+        concerts_par_musicien=concerts_par_musicien,
+        concertsParMusicien=concerts_par_musicien,
     )
-
 
 
 
 @app.route('/operations/supprimer', methods=['POST'])
 def supprimer_operation():
-    from mes_utils import supprimer_operation_en_db  # helper cascade
+    from mes_utils import supprimer_operation_en_db, detach_prevision_if_needed  # helper cascade + détachage prévision
     data = request.get_json(silent=True) or {}
     operation_id = data.get('id')
 
@@ -974,6 +1260,8 @@ def supprimer_operation():
     try:
         # Cas 1 : suppression d'une opération principale "Salaire" -> cascade
         if motif_norm == "salaire":
+            # Détacher la prévision si jamais c'en était une (sécurisant et idempotent)
+            detach_prevision_if_needed(operation)
             supprimer_operation_en_db(operation.id)
             success = True
 
@@ -988,28 +1276,38 @@ def supprimer_operation():
                 racine = Operation.query.filter_by(operation_liee_id=operation.id, motif="Salaire").first()
 
             if racine and (racine.motif or '').strip().lower() == "salaire":
+                # Détacher (au cas où) puis suppression en cascade depuis la racine
+                detach_prevision_if_needed(racine)
                 supprimer_operation_en_db(racine.id)
                 success = True
             else:
                 # À défaut, on supprime au moins l’opération demandée
-                # (mais normalement on devrait trouver la racine)
+                detach_prevision_if_needed(operation)
                 supprimer_operation_en_db(operation.id)
                 success = True
 
         # Cas 3 : autre opération -> comportement existant
         else:
+            # Avant la suppression, si c'est une op prévisionnelle liée à un concert, on nettoie le concert
+            detach_prevision_if_needed(operation)
             success = annuler_operation(operation.id)
 
         # ✅ Recalcul des participations si concert concerné
+        # ✅ Recalcule le champ concerts.frais_previsionnels (puis les potentiels)
         if concert_id:
+            from mes_utils import recompute_frais_previsionnels
+            recompute_frais_previsionnels(concert_id)  # met à jour le champ en DB
+
             from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
             mettre_a_jour_credit_calcule_potentiel_pour_concert(concert_id)
+
 
         return jsonify({'success': bool(success)})
 
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
+
 
 from mes_utils import grouper_par_mois
 from sqlalchemy import or_
@@ -1219,6 +1517,8 @@ def archives_concerts():
     return render_template('archives_concerts.html', saisons=sorted(saisons, reverse=True))
 
 
+# en haut du fichier, avec tes autres imports utilitaires
+from mes_utils import collecter_frais_par_musicien
 
 
 @app.route('/archives/concerts/<saison>')
@@ -1243,11 +1543,15 @@ def archives_concerts_saison(saison):
         .all()
     )
 
-    # ✅ Groupement par mois (ordre chronologique dans la saison)
+    # NEW: agrège les frais (débits 'Frais*' non prévisionnels) par musicien et par concert
+    from mes_utils import collecter_frais_par_musicien
+    frais_par_musicien = collecter_frais_par_musicien(concerts)
+
+    # Groupement par mois (ordre chronologique dans la saison)
     from mes_utils import grouper_par_mois
     groupes = grouper_par_mois(concerts, "date", descending=False)
 
-    # Préparation des crédits (inchangé)
+    # Crédits (inchangé)
     credits_musiciens = {}
     credits_asso7 = {}
     for concert in concerts:
@@ -1265,12 +1569,13 @@ def archives_concerts_saison(saison):
     return render_template(
         "archives_concerts_saison.html",
         saison=saison_affichee,
-        groupes=groupes,                         # 👈 nouveau
+        groupes=groupes,
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
         musiciens_dict=musiciens_dict,
+        frais_par_musicien=frais_par_musicien,  # <-- NEW: on l’envoie au template
         format_currency=format_currency,
-        readonly_checkboxes=False  # tu peux garder True si tu veux empêcher la décoche
+        readonly_checkboxes=False
     )
 
 

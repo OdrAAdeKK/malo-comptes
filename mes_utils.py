@@ -180,21 +180,41 @@ def mois_annee_label_fr(d: date) -> str:
 # 3. 🧾 UTILITAIRES MUSICIENS
 # ─────────────────────────────────────────────
 
-from collections import defaultdict
 from datetime import date
-from models import Musicien, Operation
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from models import Musicien, Operation, Participation, Concert, Report, db
 
-
-from sqlalchemy import func  # <-- en haut du fichier si pas déjà présent
 
 def get_etat_comptes():
     """Construit le tableau pour /comptes (musiciens + structures)."""
     aujourd_hui = date.today()
     tableau = []
 
-    # On va réutiliser la même liste de concerts pour calculer les crédits
     concerts = Concert.query.all()
+
+    def _sum_ops(musicien_id: int, *, passees: bool) -> float:
+        """
+        Somme (credit - debit) des opérations.
+        - passées  := date <= aujourd_hui ET (previsionnel is False/None)
+        - à venir := (date > aujourd_hui) OU (previsionnel is True)
+        """
+        q = Operation.query.filter(Operation.musicien_id == musicien_id)
+        if passees:
+            q = (q.filter(Operation.date <= aujourd_hui)
+                   .filter(or_(Operation.previsionnel.is_(False),
+                               Operation.previsionnel.is_(None))))
+        else:
+            q = q.filter(or_(Operation.date > aujourd_hui,
+                             Operation.previsionnel.is_(True)))
+
+        total = 0.0
+        for op in q.all():
+            typ = (op.type or "").lower().replace("é", "e")
+            if typ == "credit":
+                total += (op.montant or 0.0)
+            elif typ == "debit":
+                total -= (op.montant or 0.0)
+        return total
 
     # ---------- MUSICIENS (tout ce qui n'est PAS 'structure') ----------
     musiciens = (
@@ -203,23 +223,6 @@ def get_etat_comptes():
         .order_by(Musicien.nom, Musicien.prenom)
         .all()
     )
-
-    def _sum_ops(musicien_id, *, passees=True):
-        """Somme des opérations passées/à venir (credit - debit)."""
-        q = Operation.query.filter(Operation.musicien_id == musicien_id)
-        if passees:
-            q = q.filter(Operation.date <= aujourd_hui)
-        else:
-            q = q.filter(Operation.date > aujourd_hui)
-
-        total = 0.0
-        for op in q.all():
-            op_type = (op.type or "").lower().replace("é", "e")
-            if op_type == "credit":
-                total += op.montant or 0
-            elif op_type == "debit":
-                total -= op.montant or 0
-        return total
 
     for m in musiciens:
         # Crédit réel = participations réelles + reports + opérations passées
@@ -234,7 +237,7 @@ def get_etat_comptes():
         ops_passees = _sum_ops(m.id, passees=True)
         credit_reel += report + ops_passees
 
-        # Gains à venir = participations potentielles + opérations à venir
+        # Gains à venir = participations potentielles + opérations à venir (inclut prévisionnels)
         gains_potentiels = (db.session.query(func.sum(Participation.credit_calcule_potentiel))
                             .filter_by(musicien_id=m.id)
                             .scalar() or 0.0)
@@ -264,16 +267,13 @@ def get_etat_comptes():
     )
 
     for s in structures:
-        # Crédit actuel coté structure (utilise ta logique existante)
         credit = calculer_credit_actuel(s, concerts)
 
-        # Report associé à la structure
         report_s = (db.session.query(func.sum(Report.montant))
                     .filter_by(musicien_id=s.id)
                     .scalar() or 0.0)
         credit += report_s
 
-        # Gains à venir = participations potentielles + opérations à venir
         gains_a_venir = (db.session.query(func.sum(Participation.credit_calcule_potentiel))
                          .filter_by(musicien_id=s.id)
                          .scalar() or 0.0)
@@ -303,11 +303,16 @@ def get_etat_comptes():
                                .filter(Concert.paye.is_(False),
                                        Concert.mode_paiement_prevu == "CB ASSO7")
                                .scalar() or 0.0)
+        # ➕ inclure aussi les opérations à venir (dont prévisionnels)
+        ops_avenir_cb = _sum_ops(cb_asso7.id, passees=False)
+
+        gains_cb = (recettes_a_venir_cb or 0.0) + ops_avenir_cb
+
         tableau.append({
             "nom": "CB ASSO7",
             "credit": credit_cb,
-            "gains_a_venir": recettes_a_venir_cb,
-            "credit_potentiel": credit_cb + recettes_a_venir_cb,
+            "gains_a_venir": gains_cb,
+            "credit_potentiel": credit_cb + gains_cb,
             "structure": True
         })
 
@@ -323,22 +328,26 @@ def get_etat_comptes():
                                    .filter(Concert.paye.is_(False),
                                            Concert.mode_paiement_prevu == "CAISSE ASSO7")
                                    .scalar() or 0.0)
+        # ➕ inclure aussi les opérations à venir (dont prévisionnels)
+        ops_avenir_caisse = _sum_ops(caisse_asso7.id, passees=False)
+
+        gains_caisse = (recettes_a_venir_caisse or 0.0) + ops_avenir_caisse
+
         tableau.append({
             "nom": "CAISSE ASSO7",
             "credit": credit_caisse,
-            "gains_a_venir": recettes_a_venir_caisse,
-            "credit_potentiel": credit_caisse + recettes_a_venir_caisse,
+            "gains_a_venir": gains_caisse,
+            "credit_potentiel": credit_caisse + gains_caisse,
             "structure": True
         })
 
     # --- TRESO ASSO7 = CB + CAISSE ---
     if cb_asso7 or caisse_asso7:
-        # Recalcule à partir des lignes qu’on vient de pousser
         cb_row = next((r for r in tableau if r.get("nom") == "CB ASSO7"), None)
         caisse_row = next((r for r in tableau if r.get("nom") == "CAISSE ASSO7"), None)
 
         treso_credit = (cb_row["credit"] if cb_row else 0.0) + (caisse_row["credit"] if caisse_row else 0.0)
-        treso_gains = (cb_row["gains_a_venir"] if cb_row else 0.0) + (caisse_row["gains_a_venir"] if caisse_row else 0.0)
+        treso_gains  = (cb_row["gains_a_venir"] if cb_row else 0.0) + (caisse_row["gains_a_venir"] if caisse_row else 0.0)
 
         tableau.append({
             "nom": "TRESO ASSO7",
@@ -349,7 +358,6 @@ def get_etat_comptes():
         })
 
     return tableau
-
 
 
 
@@ -456,7 +464,48 @@ def calculer_gains_a_venir(musicien, concerts):
     return credit
 
 
+# --- imports nécessaires (ajoute-les s'ils ne sont pas déjà présents) ---
+from collections import defaultdict
+from typing import Dict
+from sqlalchemy import func, or_, case
+from models import db, Operation  # Concert pas nécessaire ici
 
+def collecter_frais_par_musicien(concerts):
+    """
+    Renvoie un dict { concert_id: { musicien_id: total_frais } }.
+    On additionne:
+      - DEBIT  -> +montant
+      - CREDIT -> -montant   (ex: remboursement)
+    On ignore les opérations prévisionnelles.
+    """
+    concert_ids = [c.id for c in concerts] or [-1]
+
+    signed_sum = func.sum(
+        case(
+            (func.lower(Operation.type) == "debit",  Operation.montant),
+            (func.lower(Operation.type) == "credit", -Operation.montant),
+            else_=0.0,
+        )
+    )
+
+    rows = (
+        Operation.query
+        .with_entities(Operation.concert_id, Operation.musicien_id, signed_sum.label("total"))
+        .filter(
+            Operation.concert_id.in_(concert_ids),
+            func.lower(Operation.motif) == "frais",
+            Operation.previsionnel.is_(False)
+        )
+        .group_by(Operation.concert_id, Operation.musicien_id)
+        .all()
+    )
+
+    out = {}
+    for cid, mid, total in rows:
+        if total is None:
+            continue
+        out.setdefault(cid, {})[mid] = float(total)
+    return out
 
 
 
@@ -678,43 +727,47 @@ def concerts_groupes_par_mois(concerts):
     )
     return groupes_tries
 
-def recalculer_frais_concert(concert_id, op_to_remove_id=None):
+def recalculer_frais_concert(concert_id: int, op_to_remove_id: int | None = None):
     """
-    Recalcule la somme des opérations de type 'Frais' associées au concert,
-    en excluant éventuellement l'opération supprimée, et met à jour la colonne `frais` dans la table `concert`.
+    Recalcule la somme des opérations 'Frais' rattachées au concert,
+    en EXCLUANT:
+      - les opérations prévisionnelles (previsionnel = TRUE),
+      - éventuellement une opération donnée (op_to_remove_id) si on l'appelle AVANT sa suppression.
+    Met à jour concert.frais et retourne le total calculé.
     """
-    # Récupérer le concert
+    # 1) Récupération du concert
     concert = Concert.query.get(concert_id)
     if concert is None:
         print(f"❌ Le concert {concert_id} n'existe pas")
-        return  # Si le concert n'existe pas, on ne fait rien
+        return 0.0
 
-    # Calcul des frais actuels avant la suppression
-    frais_total = db.session.query(db.func.sum(Operation.montant)).filter(
+    # 2) Construction de la requête: Frais réels uniquement (prévisionnels exclus)
+    q = db.session.query(db.func.coalesce(db.func.sum(Operation.montant), 0.0)).filter(
         Operation.concert_id == concert_id,
-        Operation.motif == "Frais"
-    ).scalar()
+        Operation.motif == "Frais",
+        # On prend les opérations où previsionnel est False OU NULL (compat anciens enregistrements)
+        db.or_(Operation.previsionnel.is_(False), Operation.previsionnel.is_(None))
+    )
 
-    if frais_total is None:
-        frais_total = 0.0
-
-    print(f"✅ Frais actuels avant suppression : {frais_total} €")
-
-    # Si une opération a été supprimée, on la retire des frais actuels
+    # 3) Si on connaît l'ID d'une op à retirer (appel avant suppression), on l'exclut de la somme
     if op_to_remove_id:
-        operation_to_remove = Operation.query.get(op_to_remove_id)
-        if operation_to_remove and operation_to_remove.motif == "Frais":
-            print(f"⛔ Suppression de l'opération {operation_to_remove_id} de type 'Frais' : {operation_to_remove.montant} €")
-            frais_total -= operation_to_remove.montant  # Déduire le montant de l'opération supprimée
-            print(f"✅ Nouveau total des frais après suppression : {frais_total} €")
+        q = q.filter(Operation.id != op_to_remove_id)
 
-    # Mettre à jour le champ `frais` du concert
+    frais_total = float(q.scalar() or 0.0)
+    print(f"✅ Total des frais (hors prévisionnels){' et hors op '+str(op_to_remove_id) if op_to_remove_id else ''} : {frais_total:.2f} €")
+
+    # 4) Écriture en base
     try:
         concert.frais = frais_total
+        db.session.add(concert)
         db.session.commit()
-        print(f"✅ Frais mis à jour pour le concert {concert_id} : {frais_total} €")
+        print(f"✅ Frais mis à jour pour le concert {concert_id} : {frais_total:.2f} €")
     except Exception as e:
+        db.session.rollback()
         print(f"❌ Erreur lors de la mise à jour des frais pour le concert {concert_id} :", e)
+
+    return frais_total
+
 
 def concerts_non_payes(concerts):
     """Retourne les concerts passés et non payés."""
@@ -1002,6 +1055,160 @@ def basculer_statut_paiement_concert(concert_id: int, paye: bool, montant: float
             raise
 
 
+from datetime import date
+from models import db, Operation, Concert, Musicien
+
+def _get_compte_cbaso7():
+    # Adapte si tu as une façon “officielle” d’identifier CB ASSO7
+    return Musicien.query.filter(
+        (Musicien.nom.ilike('%ASSO7%')) | (Musicien.prenom.ilike('%ASSO7%'))
+    ).first()
+
+def _parse_montant(txt: str | None) -> float | None:
+    if not txt:
+        return None
+    s = str(txt).strip().replace(" ", "").replace("\xa0", "").replace(",", ".")
+    if not s:
+        return None
+    try:
+        v = round(float(s), 2)
+        return v if v > 0 else None
+    except Exception:
+        return None
+
+def recompute_frais_previsionnels(concert_id: int) -> float:
+    """Recalcule concerts.frais_previsionnels en sommant les opérations
+    prévisionnelles 'Frais' (débit) imputées à CB ASSO7 pour ce concert."""
+    from models import db, Operation, Musicien, Concert
+
+    cb_id = (
+        Musicien.query
+        .filter(db.func.lower(db.func.trim(Musicien.nom)) == 'cb asso7')
+        .with_entities(Musicien.id)
+        .scalar()
+    )
+    if not cb_id:
+        # Pas de CB ASSO7 => par prudence, 0 ET on met le champ à None
+        c = Concert.query.get(concert_id)
+        if c:
+            c.frais_previsionnels = None
+            db.session.add(c)
+            db.session.commit()
+        return 0.0
+
+    total = (
+        db.session.query(db.func.coalesce(db.func.sum(Operation.montant), 0.0))
+        .filter(
+            Operation.concert_id == concert_id,
+            Operation.previsionnel.is_(True),
+            db.func.lower(db.func.coalesce(Operation.motif, '')) == 'frais',
+            db.func.lower(db.func.coalesce(Operation.type,  '')) == 'debit',
+            Operation.musicien_id == cb_id,
+        )
+        .scalar()
+        or 0.0
+    )
+
+    c = Concert.query.get(concert_id)
+    if c:
+        c.frais_previsionnels = (None if float(total) == 0.0 else float(total))
+        db.session.add(c)
+        db.session.commit()
+    return float(total)
+
+def ensure_op_frais_previsionnels(concert_id: int, frais_txt: str | None) -> None:
+    """
+    Crée / met à jour / supprime l'opération prévisionnelle 'Frais' liée à un concert.
+    ✅ Imputée par défaut à **CB ASSO7** (fallback 'ASSO7' si CB absent).
+    """
+    from models import db, Concert, Operation, Musicien
+
+    concert = Concert.query.get(concert_id)
+    if not concert:
+        return
+
+    montant = _parse_montant(frais_txt)
+
+    # CB ASSO7 prioritaire
+    cb = Musicien.query.filter(Musicien.nom == "CB ASSO7").first()
+    if not cb:
+        cb = Musicien.query.filter(Musicien.nom == "ASSO7").first()
+
+    # — Cas SUPPRESSION : montant vide/0 → on purge TOUTES les prévisionnelles "Frais" de ce concert
+    if not montant:
+        ops_prev = Operation.query.filter_by(
+            concert_id=concert.id,
+            previsionnel=True,
+            motif="Frais"
+        ).all()
+        for opx in ops_prev:
+            db.session.delete(opx)
+
+        concert.op_prevision_frais_id = None
+        # On ne fixe pas directement frais_previsionnels : on laisse le recompute
+        db.session.add(concert)
+        db.session.commit()
+
+        # recalcul agrégé (mettra None si total = 0)
+        recompute_frais_previsionnels(concert.id)
+        return
+
+    # — Cas CREATION / MISE A JOUR
+    op = None
+    if concert.op_prevision_frais_id:
+        op = Operation.query.get(concert.op_prevision_frais_id)
+    if not op:
+        op = Operation.query.filter_by(
+            concert_id=concert.id,
+            previsionnel=True,
+            motif="Frais"
+        ).first()
+
+    if not op:
+        op = Operation(
+            musicien_id=(cb.id if cb else None),
+            type="debit",
+            motif="Frais",
+            nature="frais",
+            precision=f"Frais prévisionnels — Concert #{concert.id} {concert.lieu}",
+            montant=montant,
+            date=concert.date,
+            concert_id=concert.id,
+            previsionnel=True,
+            auto_cb_asso7=False,  # visible dans « à venir »
+        )
+        db.session.add(op)
+        db.session.flush()           # récupère op.id
+        concert.op_prevision_frais_id = op.id
+    else:
+        op.musicien_id = (cb.id if cb else op.musicien_id)
+        op.type = "debit"
+        op.motif = "Frais"
+        op.nature = "frais"
+        op.montant = montant
+        op.date = concert.date
+        op.previsionnel = True
+        op.auto_cb_asso7 = False
+        db.session.add(op)
+
+    db.session.add(concert)
+    db.session.commit()
+
+    # recalcul agrégé (et écrit le champ concert.frais_previsionnels)
+    recompute_frais_previsionnels(concert.id)
+
+
+def detach_prevision_if_needed(op: Operation):
+    """À appeler avant de supprimer une op : nettoie le lien côté Concert si c'était une prévision et recalcule."""
+    from models import db, Concert
+    if op and op.previsionnel and op.concert_id:
+        c = Concert.query.get(op.concert_id)
+        if c and c.op_prevision_frais_id == op.id:
+            c.op_prevision_frais_id = None
+            db.session.add(c)
+            db.session.commit()
+            # recalcul (mettra None/0 si plus rien)
+            recompute_frais_previsionnels(c.id)
 
 # ─────────────────────────────────────────────
 # 5. 💸 GESTION DES OPÉRATIONS
@@ -1180,6 +1387,25 @@ def enregistrer_operation_en_db(data):
     # 💾 Enregistrement global + recalcul
     try:
         db.session.commit()
+        
+        # --- RECOMPUTE POTENTIAL (FIX UnboundLocalError) --------------------------
+        # Recalcule le crédit potentiel si l'opération est liée à un concert
+        cid_raw = data.get("concert_id")
+        try:
+            cid = int(str(cid_raw).strip()) if cid_raw else None
+        except Exception:
+            cid = None
+
+        if cid:
+            # Import local AVANT l'appel (évite l'UnboundLocalError)
+            from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+            try:
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(cid)
+            except Exception as e:
+                # On logge mais on ne casse pas la requête
+                print(f"[WARN] Recalcul potentiel ignoré pour concert {cid}: {e}")
+    # --------------------------------------------------------------------------
+            
         print(f"[OK] Operation {motif} enregistrée pour {data.get('musicien')}")
 
         if concert_id:

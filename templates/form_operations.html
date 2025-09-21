@@ -247,6 +247,9 @@
     <title>{% if is_modification %}Modifier une opération{% else %}Nouvelle opération{% endif %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Scripts Flatpickr (comme sur operations.html) -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/fr.js"></script>
     <style>
     /* ... COLLE ici l'intégralité de ton CSS de operations.html ... */
     </style>
@@ -261,36 +264,36 @@
         <div class="form-row-flex">
             <div>
                 <label for="musicien">Qui&nbsp;?</label>
-                <select name="musicien" id="musicien" required 
-                    {% if is_modification %}readonly disabled tabindex="-1"{% endif %}>
-                    <option value="">-- Sélectionner --</option>
-                    {% for musicien in musiciens_normaux|sort(attribute='nom') %}
-                        {% set nom_complet = (musicien['prenom'] ~ ' ' ~ musicien['nom']).strip() %}
-                        {% if nom_complet not in ['ASSO7', 'CB ASSO7', 'CAISSE ASSO7', 'TRESO ASSO7'] %}
-                            <option value="{{ musicien['id'] }}"
-                                {% if operation and nom_complet == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
-                                {{ nom_complet }}
-                            </option>
-                        {% endif %}
-                    {% endfor %}
-                    <option disabled>──────────</option>
-                    <option value="ASSO7" style="color:black;font-weight:bold;"
-                        {% if operation and 'ASSO7' == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
-                        ASSO7
-                    </option>
-                    <option value="CB ASSO7" style="color:purple;font-weight:bold;"
-                        {% if operation and 'CB ASSO7' == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
-                        CB ASSO7
-                    </option>
-                    <option value="CAISSE ASSO7" style="color:green;font-weight:bold;"
-                        {% if operation and 'CAISSE ASSO7' == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
-                        CAISSE ASSO7
-                    </option>
+                <select name="musicien" id="musicien" required {% if is_modification %}readonly disabled tabindex="-1"{% endif %}>
+                  <option value="">-- Sélectionner --</option>
+                  {% for musicien in musiciens_normaux|sort(attribute='nom') %}
+                    {% set nom_complet = (musicien['prenom'] ~ ' ' ~ musicien['nom']).strip() %}
+                    {% if nom_complet not in ['ASSO7','CB ASSO7','CAISSE ASSO7','TRESO ASSO7'] %}
+                      <option value="{{ nom_complet }}"
+                        {% if operation and nom_complet == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
+                        {{ nom_complet }}
+                      </option>
+                    {% endif %}
+                  {% endfor %}
+                  <option disabled>──────────</option>
+                  <option value="ASSO7" style="color:black;font-weight:bold;"
+                    {% if operation and 'ASSO7' == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
+                    ASSO7
+                  </option>
+                  <option value="CB ASSO7" style="color:purple;font-weight:bold;"
+                    {% if operation and 'CB ASSO7' == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
+                    CB ASSO7
+                  </option>
+                  <option value="CAISSE ASSO7" style="color:green;font-weight:bold;"
+                    {% if operation and 'CAISSE ASSO7' == operation.musicien.prenom ~ ' ' ~ operation.musicien.nom %}selected{% endif %}>
+                    CAISSE ASSO7
+                  </option>
                 </select>
-                {# Ajoute un champ caché si modification pour renvoyer la valeur #}
                 {% if is_modification %}
+                <!-- Comme le select est disabled en modification, on renvoie aussi la valeur via un hidden -->
                 <input type="hidden" name="musicien" value="{{ operation.musicien.prenom ~ ' ' ~ operation.musicien.nom }}">
                 {% endif %}
+
             </div>
             <div>
                 <label for="date">Date :</label>
@@ -337,6 +340,9 @@
                     <option value="Achat" {% if operation and operation.motif == "Achat" %}selected{% endif %}>Achat</option>
                     <option value="Vente" {% if operation and operation.motif == "Vente" %}selected{% endif %}>Vente</option>
                     <option value="Recette concert" {% if operation and operation.motif == "Recette concert" %}selected{% endif %}>Recette concert</option>
+                    <option value="Remboursement frais divers" {% if operation and operation.motif == "Remboursement frais divers" %}selected{% endif %}>
+                        Remboursement frais divers
+                    </option>
                 </select>
             </div>
             <div style="margin-top: 22px; text-align: left;">
@@ -360,9 +366,16 @@
             <div class="field-col large">
                 <label for="concert_field">Concert lié :</label>
                 <div class="concert-autocomplete-wrapper" style="position:relative;display:flex;gap:6px;align-items:center;">
-                    <input type="text" id="concert_field" name="concert_field" autocomplete="off" value="{% if operation and operation.concert %}{{ operation.concert.date.strftime('%d/%m/%Y') ~ ' — ' ~ operation.concert.lieu }}{% endif %}">
+                    <!-- Champ visible -->
+                    <input type="text" id="concert_field" name="concert_field" autocomplete="off"
+                           value="{% if operation and operation.concert %}{{ operation.concert.date.strftime('%d/%m/%Y') ~ ' — ' ~ operation.concert.lieu }}{% endif %}">
+                    <!-- Input caché pour Flatpickr (obligatoire pour l’icône 📅) -->
+                    <input type="text" id="concert_date_picker" style="display:none">
+                    <!-- Hidden ID du concert -->
                     <input type="hidden" id="concert_id" name="concert_id" value="{{ operation.concert.id if operation and operation.concert else '' }}">
+                    <!-- Icône calendrier -->
                     <span id="calendar_icon">📅</span>
+                    <!-- Liste autocomplete -->
                     <div id="concert_autocomplete" class="autocomplete-list"></div>
                 </div>
             </div>
@@ -380,8 +393,16 @@
     </form>
 </div>
 
-<!-- ... scripts inchangés ... -->
+<!-- Données pour le JS -->
+<script>window.concerts = {{ concerts_js | tojson | safe }};</script>
+<script>window.concertsParMusicien = {{ concerts_par_musicien | tojson | safe }};</script>
+
+<!-- Bundle commun qui gère motifs, type, brut, calendrier & autocomplete -->
 <script src="{{ url_for('static', filename='js/operations.js') }}"></script>
+</body>
+
+
+
 
 <!-- Modal PDF Scan -->
 <div id="scanModal" class="modal">

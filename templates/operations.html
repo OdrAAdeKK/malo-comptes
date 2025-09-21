@@ -337,6 +337,8 @@
     <option value="Achat" {% if operation and operation.motif == "Achat" %}selected{% endif %}>Achat</option>
     <option value="Vente" {% if operation and operation.motif == "Vente" %}selected{% endif %}>Vente</option>
     <option value="Recette concert" {% if operation and operation.motif == "Recette concert" %}selected{% endif %}>Recette concert</option>
+	<option value="Remboursement frais divers">Remboursement frais divers</option>
+
 </select>
 
             </div>
@@ -397,6 +399,7 @@
 <script>window.concertsParMusicien = {{ concerts_par_musicien | tojson | safe }};</script>
 
 <script src="{{ url_for('static', filename='js/operations.js') }}"></script>
+
 
 <!-- Modal PDF Scan -->
 <div id="scanModal" class="modal">
