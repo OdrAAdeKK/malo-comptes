@@ -1,14 +1,121 @@
-<div id="popup-recherche" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-     background:#fff; border:1px solid #ccc; border-radius:10px; padding:20px; box-shadow:0 0 15px #0004; z-index:1000; width:300px;">
-    <h3>🔍 Rechercher une opération</h3>
-    <form id="form-recherche" onsubmit="return filtrerOperationsParMontant()">
-        <label for="montant">Montant (€) :</label>
-        <input type="number" id="montant" name="montant" step="0.01" style="width:100%; margin-bottom:12px;" />
+<!-- _popup_recherche.html (version fixée) -->
+<div id="popup-recherche"
+     style="position:fixed; inset:0; /* top:0;right:0;bottom:0;left:0 */
+            margin:0; padding:0; background:rgba(0,0,0,.35);
+            display:none; z-index:2147483647; pointer-events:auto; transform:none !important;">
+  <div id="popup-recherche-content"
+       style="position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+              width:min(92vw,520px); max-width:520px; background:#fff; border-radius:12px;
+              box-shadow:0 10px 30px rgba(0,0,0,.25); padding:18px 18px 12px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <h3 style="margin:0; font-size:18px;">Rechercher une opération</h3>
+      <button type="button" onclick="fermerPopupRecherche()" aria-label="Fermer"
+              style="font-size:20px; background:none; border:none; cursor:pointer; line-height:1;">✖</button>
+    </div>
 
-        <div style="display:flex; justify-content:space-between; margin-top:10px;">
-            <button type="submit">Rechercher</button>
-            <button type="button" onclick="fermerPopupRecherche()">Annuler</button>
+    <div style="display:grid; gap:10px; margin-top:12px;">
+      <label style="display:grid; gap:6px;">
+        <span>Critère</span>
+        <select id="critere-recherche">
+          <option value="montant">Montant</option>
+          <option value="date">Date</option>
+          <option value="qui">Qui</option>
+          <option value="motif">Motif</option>
+          <option value="concert">Concert</option>
+        </select>
+      </label>
 
-        </div>
-    </form>
+      <label style="display:grid; gap:6px;">
+        <span>Recherche</span>
+        <input id="valeur-recherche" type="text"
+               placeholder="Ex. 50 — 17/09/2025 — Nathalie — Cachet — Morgat…" />
+      </label>
+
+      <div id="hint-montant" class="muted" style="font-size:.9em; color:#6b7280;">
+        La recherche par <strong>Montant</strong> est en <em>valeur absolue</em> : saisir “50” retournera “+50,00” et “−50,00”.
+      </div>
+      <div id="hint-concert" class="muted" style="display:none; font-size:.9em; color:#6b7280;">
+        Pour <strong>Concert</strong>, un seul mot du libellé suffit (date/lieu/ville/organisme).
+      </div>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+        <button type="button" onclick="fermerPopupRecherche()">Annuler</button>
+        <button type="button" class="primary" onclick="lancerRecherche()">Rechercher</button>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+  function _forceFullscreenOverlay() {
+    const ov = document.getElementById('popup-recherche');
+    if (!ov) return;
+    ov.style.position = 'fixed';
+    ov.style.top = '0'; ov.style.left = '0';
+    ov.style.right = '0'; ov.style.bottom = '0';
+    ov.style.width = window.innerWidth + 'px';
+    ov.style.height = window.innerHeight + 'px';
+  }
+
+  function ouvrirPopupRecherche(){
+    const el = document.getElementById('popup-recherche');
+    if(!el) return;
+
+    // 🔴 Patch n°1 : s'assurer que l'overlay est DANS <body>, pas dans un conteneur
+    if (el.parentElement !== document.body) {
+      document.body.appendChild(el);
+    }
+
+    el.style.display = 'block';
+	// annule tout transform appliqué par des styles globaux
+	el.style.setProperty('transform', 'none', 'important');
+	el.style.setProperty('filter', 'none', 'important');        // au cas où
+	el.style.setProperty('will-change', 'auto', 'important');   // neutralise hints GPU
+
+    document.body.style.overflow = 'hidden';
+    _forceFullscreenOverlay(); // force plein écran
+
+    const input = document.getElementById('valeur-recherche');
+    if(input) setTimeout(()=>input.focus(), 0);
+
+    const crit = document.getElementById('critere-recherche')?.value || 'montant';
+    document.getElementById('hint-montant').style.display = (crit === 'montant') ? '' : 'none';
+    document.getElementById('hint-concert').style.display = (crit === 'concert') ? '' : 'none';
+  }
+
+  function fermerPopupRecherche(){
+    const el = document.getElementById('popup-recherche');
+    if(!el) return;
+    el.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  // Recalibre sur resize / orientation
+  window.addEventListener('resize', _forceFullscreenOverlay);
+  window.addEventListener('orientationchange', _forceFullscreenOverlay);
+
+  // 🔴 Patch n°2 : au chargement, replanter sous <body> si besoin
+  document.addEventListener('DOMContentLoaded', () => {
+    const ov = document.getElementById('popup-recherche');
+    if (ov && ov.parentElement !== document.body) {
+      document.body.appendChild(ov);
+    }
+  });
+
+  // toggle des hints quand on change de critère
+  document.addEventListener('change', (e)=>{
+    if(e.target && e.target.id === 'critere-recherche'){
+      const crit = e.target.value;
+      const m = document.getElementById('hint-montant');
+      const c = document.getElementById('hint-concert');
+      if(m && c){
+        m.style.display = (crit === 'montant') ? '' : 'none';
+        c.style.display = (crit === 'concert') ? '' : 'none';
+      }
+    }
+  });
+
+  // Expose global pour tes boutons onclick
+  window.ouvrirPopupRecherche = ouvrirPopupRecherche;
+  window.fermerPopupRecherche  = fermerPopupRecherche;
+</script>
