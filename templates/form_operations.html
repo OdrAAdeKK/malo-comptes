@@ -297,7 +297,11 @@
             </div>
             <div>
                 <label for="date">Date :</label>
-                <input type="text" name="date" id="date" value="{{ operation.date.strftime('%d/%m/%Y') if operation else current_date }}" required>
+				<input type="text" name="date" id="date"
+					   value="{{ operation.date.strftime('%d/%m/%Y') if operation else (prefill_date or current_date) }}"
+					   required>
+
+
             </div>
         </div>
 
@@ -334,16 +338,29 @@
         <div class="form-row-flex">
             <div>
                 <label for="motif">Motif</label>
-                <select id="motif" name="motif" required>
-                    <option value="Salaire" {% if operation and operation.motif == "Salaire" %}selected{% endif %}>Salaire</option>
-                    <option value="Frais" {% if operation and operation.motif == "Frais" %}selected{% endif %}>Frais</option>
-                    <option value="Achat" {% if operation and operation.motif == "Achat" %}selected{% endif %}>Achat</option>
-                    <option value="Vente" {% if operation and operation.motif == "Vente" %}selected{% endif %}>Vente</option>
-                    <option value="Recette concert" {% if operation and operation.motif == "Recette concert" %}selected{% endif %}>Recette concert</option>
-                    <option value="Remboursement frais divers" {% if operation and operation.motif == "Remboursement frais divers" %}selected{% endif %}>
-                        Remboursement frais divers
-                    </option>
-                </select>
+				<select id="motif" name="motif" required>
+				  <option value="Frais"
+					{% if (operation and operation.motif == "Frais") or (not operation) %}selected{% endif %}>
+					Frais
+				  </option>
+				  <option value="Salaire" {% if operation and operation.motif == "Salaire" %}selected{% endif %}>
+					Salaire
+				  </option>
+				  <option value="Achat" {% if operation and operation.motif == "Achat" %}selected{% endif %}>
+					Achat
+				  </option>
+				  <option value="Vente" {% if operation and operation.motif == "Vente" %}selected{% endif %}>
+					Vente
+				  </option>
+				  <option value="Recette concert" {% if operation and operation.motif == "Recette concert" %}selected{% endif %}>
+					Recette concert
+				  </option>
+				  <option value="Remboursement frais divers"
+					{% if operation and operation.motif == "Remboursement frais divers" %}selected{% endif %}>
+					Remboursement frais divers
+				  </option>
+				</select>
+
             </div>
             <div style="margin-top: 22px; text-align: left;">
                 <button type="button" class="btn-scan" onclick="openScanModal()">📎 Scan PAYE</button>
@@ -366,13 +383,17 @@
             <div class="field-col large">
                 <label for="concert_field">Concert lié :</label>
                 <div class="concert-autocomplete-wrapper" style="position:relative;display:flex;gap:6px;align-items:center;">
-                    <!-- Champ visible -->
-                    <input type="text" id="concert_field" name="concert_field" autocomplete="off"
-                           value="{% if operation and operation.concert %}{{ operation.concert.date.strftime('%d/%m/%Y') ~ ' — ' ~ operation.concert.lieu }}{% endif %}">
-                    <!-- Input caché pour Flatpickr (obligatoire pour l’icône 📅) -->
-                    <input type="text" id="concert_date_picker" style="display:none">
-                    <!-- Hidden ID du concert -->
-                    <input type="hidden" id="concert_id" name="concert_id" value="{{ operation.concert.id if operation and operation.concert else '' }}">
+					<!-- Champ visible -->
+					<input type="text" id="concert_field" name="concert_field" autocomplete="off"
+						   value="{% if operation and operation.concert %}{{ operation.concert.date.strftime('%d/%m/%Y') ~ ' — ' ~ operation.concert.lieu }}{% elif prefill_concert_label %}{{ prefill_concert_label }}{% endif %}">
+
+				<!-- Input caché pour Flatpickr (obligatoire pour l’icône 📅) -->
+				<input type="text" id="concert_date_picker" style="display:none">
+
+				<!-- Hidden ID du concert -->
+				<input type="hidden" id="concert_id" name="concert_id"
+					   value="{{ operation.concert.id if operation and operation.concert else (prefill_concert_id or '') }}">
+					   
                     <!-- Icône calendrier -->
                     <span id="calendar_icon">📅</span>
                     <!-- Liste autocomplete -->
@@ -380,6 +401,8 @@
                 </div>
             </div>
         </div>
+		<input type="hidden" name="next" value="{{ next_url or '' }}">
+
 
         <div class="button-row">
             <button type="submit" class="valider-button" style="width: 100%; max-width: 700px;">Valider</button>
@@ -399,6 +422,26 @@
 
 <!-- Bundle commun qui gère motifs, type, brut, calendrier & autocomplete -->
 <script src="{{ url_for('static', filename='js/operations.js') }}"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const selMotif = document.getElementById('motif');
+  // En création (pas d'operation), on force "Frais"
+  {% if not operation %}
+    if (selMotif) selMotif.value = 'Frais';
+  {% endif %}
+  if (selMotif) selMotif.dispatchEvent(new Event('change'));
+
+  // Si la route a fourni un concert à pré-remplir, on “bétonne” le champ
+  {% if prefill_concert_label and prefill_concert_id %}
+    const cf = document.getElementById('concert_field');
+    const hid = document.getElementById('concert_id');
+    if (cf && !cf.value) cf.value = "{{ prefill_concert_label|e }}";
+    if (hid && !hid.value) hid.value = "{{ prefill_concert_id }}";
+  {% endif %}
+});
+</script>
+
 </body>
 
 

@@ -423,3 +423,13 @@ tr:hover:not(.no-hover) {
 .btn-precedent:hover {
     background-color: #c34708;
 }
+.tag-solo{
+  display:inline-block;
+  background:#26bfa6;
+  color:#fff;
+  font-weight:700;
+  border-radius:12px;
+  padding:2px 8px;
+  font-size:.85em;
+  margin-left:6px;
+}

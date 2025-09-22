@@ -1,109 +1,120 @@
 {% extends 'base.html' %}
-
 {% import '_macros.html' as m %}
-
-
 
 {% block title %}Concerts archivés - Saison {{ saison }}{% endblock %}
 {% block body_class %}big-mode{% endblock %}
 
 {% block content %}
-<div class="container" style="margin-top:24px;">
+<div class="container wide" style="margin-top:24px;">
   <h1>Concerts archivés — Saison {{ saison }}</h1>
 
   {% if groupes %}
     {% for key, bloc in groupes.items() %}
       <h2 class="mois-bandeau">{{ bloc.label }}</h2>
 
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Lieu</th>
-            <th>Recette</th>
-            <th>Frais</th>
-            <th>Payé</th>
-            <th>Participants / Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for concert in bloc["items"] %}
+      <div class="table-wrap">
+        <table>
+          <thead>
             <tr>
-              <td>{{ concert.date.strftime('%d/%m/%Y') }}</td>
-			{# Lieu cliquable si une fiche est liée #}
-			{% if concert.lieu_obj %}
-			  {% set lieu_label = concert.lieu_obj.nom
-				 ~ ((' — ' ~ concert.lieu_obj.organisme) if concert.lieu_obj.organisme else '')
-				 ~ ((' — ' ~ concert.lieu_obj.ville) if concert.lieu_obj.ville else '') %}
-			{% else %}
-			  {% set lieu_label = concert.lieu or '' %}
-			{% endif %}
-
-			<td class="col-lieu">
-			  {% if concert.lieu_id %}
-				<a class="link-lieu" href="{{ url_for('fiche_lieu', lieu_id=concert.lieu_id) }}">{{ lieu_label }}</a>
-			  {% else %}
-				{{ lieu_label }}
-			  {% endif %}
-			</td>
-
-              <td>{{ concert.recette | format_currency if concert.recette is not none else '' }}</td>
-              <td>{{ concert.frais | format_currency if concert.frais is not none else '' }}</td>
-              <td style="text-align:center;">
-                <input
-                  type="checkbox"
-                  class="paye-checkbox"
-                  data-id="{{ concert.id }}"
-                  title="Cocher/décocher le statut payé"
-                  {% if concert.paye %}checked{% endif %}
-                  {% if readonly_checkboxes %}disabled{% endif %}>
-              </td>
-              <td>
-				{% if credits_musiciens.get(concert.id) %}
-				  <div class="credits" style="font-size:0.97em; margin-bottom:8px;">
-					<strong>Participants&nbsp;:</strong>
-					<ul style="margin:6px 0 4px 16px; padding-left:0;">
-						{% set fpm = frais_par_musicien.get(concert.id, {}) if frais_par_musicien else {} %}
-						{% for mid, credit in credits_musiciens[concert.id].items() %}
-						  {% set m = musiciens_dict[mid] %}
-						  {% set frais_val = fpm.get(mid) %}
-						  <li>
-							{{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
-							{% if frais_val is not none and frais_val != 0 %}
-							  <div class="frais-note">frais : {{ (frais_val | float) | abs | format_currency }}</div>
-							{% endif %}
-						  </li>
-						{% endfor %}
-
-					  <li style="font-weight:600; color:#673ab7;">
-						ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}
-					  </li>
-					</ul>
-				  </div>
-				{% endif %}
-
-
-				<div class="actions">
-				  <!-- ⚖️ Ajustements / gains fixes -->
-				  <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
-
-				  <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button" title="Modifier">✏️</a>
-				  <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button" title="Participations">👥</a>
-
-				  <!-- 🗑️ Supprimer définitivement le concert (et ses opérations/participations) -->
-				  <form method="post"
-						action="{{ url_for('supprimer_concert', concert_id=concert.id) }}"
-						onsubmit="return confirm('Supprimer définitivement ce concert et toutes ses opérations/participations ?');"
-						style="display:inline;">
-					<button type="submit" class="delete-button" title="Supprimer définitivement">🗑️</button>
-				  </form>
-				</div>
-
-              </td>
+              <th class="col-date">Date</th>
+              <th class="col-lieu">Lieu</th>
+              <th class="col-solo"></th>
+              <th class="col-amount">Recette</th>
+              <th class="col-amount">Frais</th>
+              <th class="col-paid">Payé</th>
+              <th class="col-actions">Participants / Actions</th>
             </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {% for concert in bloc["items"] %}
+              <tr>
+                <td class="col-date">{{ concert.date.strftime('%d/%m/%Y') }}</td>
+
+                {# Lieu cliquable si une fiche est liée #}
+                {% if concert.lieu_obj %}
+                  {% set lieu_label = concert.lieu_obj.nom
+                      ~ ((' — ' ~ concert.lieu_obj.organisme) if concert.lieu_obj.organisme else '')
+                      ~ ((' — ' ~ concert.lieu_obj.ville) if concert.lieu_obj.ville else '') %}
+                {% else %}
+                  {% set lieu_label = concert.lieu or '' %}
+                {% endif %}
+                <td class="col-lieu">
+                  {% if concert.lieu_id %}
+                    <a class="link-lieu" href="{{ url_for('fiche_lieu', lieu_id=concert.lieu_id) }}">{{ lieu_label }}</a>
+                  {% else %}{{ lieu_label }}{% endif %}
+                </td>
+
+                <td class="col-solo">
+                  {% if concert.solo %}<span class="solo-flag">solo</span>{% endif %}
+                </td>
+
+                <td class="col-amount">
+                  {{ concert.recette | format_currency if concert.recette is not none else '' }}
+                </td>
+
+                <td class="col-amount">
+                  {{ concert.frais | format_currency if concert.frais is not none else '' }}
+                </td>
+
+                <td class="col-paid">
+                  <input
+                    type="checkbox"
+                    class="paye-checkbox"
+                    data-id="{{ concert.id }}"
+                    title="Cocher/décocher le statut payé"
+                    {% if concert.paye %}checked{% endif %}
+                    {% if readonly_checkboxes %}disabled{% endif %}>
+                </td>
+
+                <td class="col-actions">
+                  {% if credits_musiciens.get(concert.id) %}
+                    <div class="credits">
+                      <strong>Participants&nbsp;:</strong>
+                      <ul>
+                        {% set fpm = frais_par_musicien.get(concert.id, {}) if frais_par_musicien else {} %}
+                        {% for mid, credit in credits_musiciens[concert.id].items() %}
+                          {% set m = musiciens_dict[mid] %}
+                          {% set frais_val = fpm.get(mid) %}
+                          <li>
+                            {{ m.prenom }} {{ m.nom }} : {{ credit | format_currency }}
+                            {% if frais_val is not none and frais_val != 0 %}
+                              <div class="frais-note">frais : {{ (frais_val | float) | abs | format_currency }}</div>
+                            {% endif %}
+                          </li>
+                        {% endfor %}
+                        <li class="asso7">ASSO7&nbsp;: {{ credits_asso7[concert.id] | format_currency }}</li>
+                      </ul>
+                    </div>
+                  {% endif %}
+
+                  <div class="actions">
+                    <!-- ⚖️ Ajustements / gains fixes -->
+                    <a href="#" class="adjust-button" data-id="{{ concert.id }}" title="Ajuster / fixer des gains">⚖️</a>
+
+                    <a href="{{ url_for('modifier_concert', concert_id=concert.id, next=request.full_path) }}" class="edit-button" title="Modifier">✏️</a>
+                    <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button" title="Participations">👥</a>
+
+                    <a href="{{ url_for('operations',
+                                        concert_id=concert.id,
+                                        date=concert.date.strftime('%Y-%m-%d'),
+                                        next=request.full_path) }}"
+                       class="op-button"
+                       title="Ajouter une opération liée">🧾</a>
+
+                    <!-- 🗑️ Supprimer définitivement le concert -->
+                    <form method="post"
+                          action="{{ url_for('supprimer_concert', concert_id=concert.id) }}"
+                          onsubmit="return confirm('Supprimer définitivement ce concert et toutes ses opérations/participations ?');"
+                          style="display:inline;">
+                      <button type="submit" class="delete-button" title="Supprimer définitivement">🗑️</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% endfor %}
   {% else %}
     <p>Aucun concert archivé pour cette saison.</p>
@@ -119,51 +130,82 @@
 <script src="{{ url_for('static', filename='js/popup_ajustements.js') }}"></script>
 
 <style>
-  .container { background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1); max-width:1200px; }
-  .mois-bandeau { background:#fde7e7; padding:10px 14px; border-radius:8px; margin:24px 0 8px; }
-  table { width:100%; border-collapse:collapse; }
-  th, td { padding:10px; border-bottom:1px solid #ddd; text-align:left; }
-  th { background:#4285f4; color:white; }
-  tr:hover { background:#f9fafb; }
-  .actions a { margin-right:6px; text-decoration:none; }
-
-  /* Boutons harmonisés */
-  .adjust-button, .edit-button, .participation-button {
-
-.delete-button {
-  background:#dc2626;
-  color:#fff;
-  border:none;
-  padding:6px 10px;
-  border-radius:5px;
-  font-weight:600;
-  cursor:pointer;
-}
-.delete-button:hover { background:#b91c1c; }
-
-    padding:6px 10px; border-radius:5px; color:#fff; font-weight:500;
+  /* Conteneur + largeur harmonisée (+15%) */
+  .container.wide{
+    background:white; padding:30px; border-radius:10px; box-shadow:0 0 10px rgba(0,0,0,0.1);
+    max-width:1380px; width:100%;
   }
-  .adjust-button{ background:#6d28d9; }        .adjust-button:hover{ background:#5b21b6; }
-  .edit-button{ background:#f9a825; }          .edit-button:hover{ background:#f57f17; }
-  .participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
-  
-  
-  .link-lieu { text-decoration: underline; text-underline-offset: 2px; color: inherit; }
-.link-lieu:hover { color: #0e6655; }
+  .mois-bandeau{ background:#fde7e7; padding:10px 14px; border-radius:8px; margin:24px 0 8px; }
 
+  /* Table */
+  .table-wrap{ width:100%; }
+  table{ width:100%; border-collapse:collapse; table-layout:fixed; }
+  th, td{ padding:10px; border-bottom:1px solid #ddd; }
+  th{ background:#4285f4; color:white; }
+  tr:hover{ background:#f9fafb; }
+
+  /* Colonnes */
+  .col-date   { width:110px; white-space:nowrap; text-align:left; }
+  .col-lieu   { width:32%; min-width:260px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:left; }
+  .col-solo   { width:60px; text-align:center; }
+  .col-amount { width:150px; text-align:right; }
+  .col-paid   { width:80px; text-align:center; }
+  .col-actions{ width:260px; text-align:left; }
+
+  th.col-amount{ text-align:right; }
+  th.col-paid  { text-align:center; }
+  th.col-actions{ text-align:left; }
+  th.col-lieu { white-space:nowrap; } /* évite L\nieu */
+
+  /* Recette (colonne 4) compacte ≈ 12 caractères */
+  table thead th:nth-child(4){
+    width:12ch !important;
+    max-width:12ch;
+    white-space:normal !important;
+    word-break:break-word;
+    line-height:1.15;
+    text-align:center;  /* titre centré */
+  }
+
+  /* Entête "Frais" recentré (colonne 5) */
+  table thead th:nth-child(5){ text-align:center !important; }
+
+  /* Lien vers fiche lieu */
+  .link-lieu{ text-decoration:underline; text-underline-offset:2px; color:inherit; }
+  .link-lieu:hover{ color:#0e6655; }
+
+  /* Bloc "Participants" */
+  .credits ul{ margin:6px 0 4px 16px; padding-left:0; }
+  .credits .asso7{ font-weight:600; color:#673ab7; }
+  .frais-note{ font-size:.85em; color:#6b7280; font-style:italic; margin-left:4px; }
+
+  /* Boutons */
+  .actions{ display:flex; gap:6px; }
+  .adjust-button, .edit-button, .participation-button, .op-button, .delete-button{
+    padding:6px 10px; border-radius:5px; text-decoration:none; display:inline-block;
+    font-size:.9em; color:#fff; border:none; cursor:pointer;
+  }
+  .adjust-button{ background:#6d28d9; }      .adjust-button:hover{ background:#5b21b6; }
+  .edit-button{ background:#f9a825; }        .edit-button:hover{ background:#f57f17; }
+  .participation-button{ background:#4285f4;} .participation-button:hover{ background:#3367d6; }
+  .op-button{ background:#26bfa6; }          .op-button:hover{ filter:brightness(0.92); }
+  .delete-button{ background:#dc2626; }       .delete-button:hover{ background:#b91c1c; }
+
+  /* Badge SOLO */
+  .solo-flag{
+    font-weight:700; color:#26bfa6; text-transform:uppercase; font-size:.85em; letter-spacing:.5px;
+  }
 </style>
 
 <script>
   // (Dé)cocher "Payé" depuis les archives
-  document.querySelectorAll('.paye-checkbox').forEach(function(box) {
-    box.addEventListener('change', function() {
+  document.querySelectorAll('.paye-checkbox').forEach(function(box){
+    box.addEventListener('change', function(){
       const concertId = this.dataset.id;
-
       // On gère surtout la dé-coche (retour en non-payé)
-      if (!this.checked) {
-        if (!confirm("Annuler la validation du paiement pour ce concert ?")) {
-          this.checked = true;
-          return;
+      if(!this.checked){
+        if(!confirm("Annuler la validation du paiement pour ce concert ?")){
+          this.checked = true; return;
         }
         fetch("/annuler_paiement_concert", {
           method: "POST",
@@ -172,30 +214,15 @@
         })
         .then(r => r.json())
         .then(data => {
-          if (data.success) {
-            // La page archives n'affiche que des concerts payés : on recharge.
-            location.reload();
-          } else {
-            alert("Erreur : " + (data.message || "inconnue"));
-            this.checked = true;
-          }
+          if(data && data.success){ location.reload(); }
+          else{ alert("Erreur : " + ((data && data.message) || "inconnue")); this.checked = true; }
         })
         .catch(() => { alert("Erreur réseau"); this.checked = true; });
-      } else {
-        // Re-cocher depuis les archives -> on bloque (optionnel)
+      }else{
+        // Re-cocher depuis les archives -> optionnellement bloqué
         this.checked = false;
       }
     });
   });
 </script>
-
-<style>
-  .frais-note{
-    font-size:.85em;
-    color:#6b7280;
-    font-style:italic;
-    margin-left:4px;
-  }
-</style>
-
 {% endblock %}

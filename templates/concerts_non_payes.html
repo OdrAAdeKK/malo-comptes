@@ -21,6 +21,7 @@
             <tr>
               <th class="col-date">Date</th>
               <th class="col-lieu">Lieu</th>
+			  <th class="col-solo"></th>
               <th class="col-amount">Recette attendue</th>
               <th class="col-amount">Frais</th>
               <th class="col-amount">Prévision (net)</th>
@@ -47,6 +48,9 @@
 				  {% else %}
 					{{ lieu_label }}
 				  {% endif %}
+				</td>
+				<td class="col-solo">
+				  {% if concert.solo %}<span class="solo-flag">solo</span>{% endif %}
 				</td>
 
 
@@ -129,6 +133,13 @@
                       <button type="submit" class="delete-button">🗑</button>
                     </form>
                     <a href="{{ url_for('liste_participations', concert_id=concert.id) }}" class="participation-button">👥</a>
+					<a href="{{ url_for('operations',
+										concert_id=concert.id,
+										date=concert.date.strftime('%Y-%m-%d'),
+										next=request.full_path) }}"
+					   class="op-button"
+					   title="Ajouter une opération liée">🧾</a>
+
                   </div>
                 </td>
               </tr>
@@ -251,62 +262,87 @@
 </script>
 
 <style>
-/* Container plus large, avec fallback responsive */
-.container.wide {
-  width: min(96vw, 1200px);
-  max-width: 1200px;
+  .container {
+    background: white; padding: 30px; border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    max-width: 1380px;                 /* +15% */
+    width: 100%;
+  }
+  .legend { color:#555; margin: 6px 0 16px; }
+  h2 { font-size: 1.2rem; color:#333; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 26px; table-layout: fixed; }
+  th, td { padding: 10px; border-bottom: 1px solid #ddd; }
+  th { background-color: #4285f4; color: white; }
+  tr:hover { background-color: #f7f9ff; }
+
+  /* Colonnes de base */
+  .col-date   { width: 110px; white-space: nowrap; text-align:left; }
+  .col-lieu   { width: 32%; min-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align:left; }
+  .col-solo   { width: 60px; text-align: center; }  /* colonne sans entête, pour le badge SOLO */
+  .col-amount { width: 150px; text-align: right; }
+  .col-paid   { width: 80px;  text-align: center; }
+  .col-actions{ width: 220px; text-align:left; }
+
+  th.col-amount { text-align: right; }
+  th.col-paid   { text-align: center; }
+  th.col-actions{ text-align: left; }
+  th.col-lieu   { white-space: nowrap; } /* évite "Li\n eu" dans l'entête */
+
+  /* ⚙️ Ajustements ciblés par position des colonnes
+     Ordre: 1-Date, 2-Lieu, 3-(SOLO), 4-Recette, 5-Frais, 6-Prévision, 7-Payé, 8-Actions */
+  /* Recette attendue = largeur compacte à ~12 caractères */
+  table thead th:nth-child(4),
+table thead th:nth-child(4) {
+  width: 12ch !important;
+  max-width: 12ch;
+  white-space: normal !important;   /* allow wrapping */
+  word-break: break-word;
+  line-height: 1.15;
+  text-align: center;
 }
+  /* Entête "Frais" recentré (les valeurs restent alignées à droite via .col-amount) */
+  table thead th:nth-child(5) {
+    text-align: center !important;
+  }
 
-/* Scroll horizontal de secours sur écrans étroits */
-.table-wrap { overflow-x: auto; }
+  /* Actions */
+  .actions { display: flex; gap: 6px; }
+  .edit-button, .delete-button, .participation-button, .adjust-button {
+    padding: 6px 10px; border-radius: 5px; text-decoration: none;
+    font-size: 0.9em; display: inline-block; border: none; cursor: pointer; color:#fff;
+  }
+  .adjust-button { background:#6d28d9; } .adjust-button:hover { background:#5b21b6; }
+  .edit-button { background-color: #f9a825; } .edit-button:hover { background-color: #f57f17; }
+  .delete-button { background-color: #d32f2f; } .delete-button:hover { background-color: #b71c1c; }
+  .participation-button { background-color: #4285f4; } .participation-button:hover { background-color: #3367d6; }
 
-/* Table + colonnes */
-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-th, td { padding: 10px; border-bottom: 1px solid #ddd; }
-th { background-color: #4285f4; color: white; }
+  .subnote { font-size: .85em; color:#888; }
 
-/* Largeurs de colonnes (donne plus d'espace à Lieu) */
-.col-date    { width: 120px; white-space: nowrap; }
-.col-lieu    { width: 32%; min-width: 300px; white-space: normal; word-break: normal; overflow-wrap: break-word; }
-.col-amount  { width: 140px; text-align: right; }
-.col-paid    { width: 110px; text-align: center; }
-.col-actions { width: 250px; }
+  /* Lien fiche lieu */
+  .link-lieu { text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+  .link-lieu:hover { color: #0e6655; }
 
-tr:hover { background-color: #f7f9ff; }
+  /* Bouton Opération */
+  .op-button{
+    background:#26bfa6;
+    color:#fff !important;
+    padding:6px 10px;
+    border-radius:5px;
+    text-decoration:none;
+    display:inline-block;
+    font-size:.9em;
+  }
+  .op-button:hover{ filter:brightness(0.92); }
 
-.mois-bandeau{
-  margin:22px 0 6px; padding:10px 14px; background:#ffe6e6;
-  border-radius:8px; font-weight:700; font-size:18px;
-}
-
-/* Détails */
-.credits { font-size: 0.95em; margin-bottom: 8px; }
-.credits ul { margin: 6px 0 4px 16px; padding-left: 0; }
-.credits .asso7 { font-weight: 600; color: #673ab7; }
-.subnote { font-size: 0.85em; color:#888; }
-
-/* Actions */
-.actions{ display:flex; gap:6px; margin-top: 6px; }
-.edit-button,.delete-button,.participation-button,.adjust-button{
-  padding:6px 10px; border-radius:5px; text-decoration:none; font-size:.9em; border:none; cursor:pointer; color:#fff;
-}
-.adjust-button{ background:#6d28d9; } .adjust-button:hover{ background:#5b21b6; }
-.edit-button{ background:#f9a825; } .edit-button:hover{ background:#f57f17; }
-.delete-button{ background:#d32f2f; } .delete-button:hover{ background:#b71c1c; }
-.participation-button{ background:#4285f4; } .participation-button:hover{ background:#3367d6; }
-
-
-.link-lieu { text-decoration: underline; text-underline-offset: 2px; color: inherit; }
-.link-lieu:hover { color: #0e6655; }
-
-</style>
-
-<style>
-  .frais-note{
+  /* Badge SOLO */
+  .solo-flag {
+    font-weight: 700;
+    color: #26bfa6;
+    text-transform: uppercase;
     font-size: .85em;
-    color: #6b7280;     /* gris */
-    font-style: italic;
-    margin-left: 4px;
+    letter-spacing: .5px;
   }
 </style>
 {% endblock %}

@@ -6,7 +6,7 @@
   {%- set org   = c.lieu_obj.organisme if c.lieu_obj and c.lieu_obj.organisme else '' -%}
   {%- set ville = c.lieu_obj.ville if c.lieu_obj and c.lieu_obj.ville else '' -%}
 
-  {# Concatène proprement sans utiliser "do" #}
+  {# Concatène proprement (sans "do") #}
   {%- set txt = nom or '' -%}
   {%- if org %}{% set txt = txt ~ ' — ' ~ org %}{% endif -%}
   {%- if ville %}{% set txt = txt ~ ' — ' ~ ville %}{% endif -%}
@@ -16,5 +16,15 @@
     <a href="{{ url_for('fiche_lieu', lieu_id=c.lieu_id) }}">{{ txt }}</a>
   {%- else -%}
     {{ txt }}
+  {%- endif -%}
+
+  {# Badge SOLO (optionnel) #}
+  {%- if c.solo -%}
+    <span class="tag-solo"
+          title="Concert solo"
+          style="display:inline-block; margin-left:6px; padding:2px 8px; border-radius:999px;
+                 background:#eef2ff; color:#3730a3; font-size:.82em; font-weight:700; border:1px solid #c7d2fe;">
+      Solo
+    </span>
   {%- endif -%}
 {%- endmacro -%}

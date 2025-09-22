@@ -89,6 +89,7 @@ class Concert(db.Model):
         who = self.lieu_obj.nom if self.lieu_obj else (self.lieu or '—')
         return f"<Concert #{self.id} {self.date} @ {who}>"
 
+    solo = db.Column(db.Boolean, default=False, nullable=False)
 
 
 class Participation(db.Model):

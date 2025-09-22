@@ -14,7 +14,7 @@ from flask_migrate import Migrate
 from flask_mail import Mail, Message
 from dotenv import load_dotenv
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, func
 from werkzeug.utils import secure_filename
 
 from exports import generer_export_excel
@@ -353,6 +353,9 @@ def ajouter_concert():
         paye = ('paye' in request.form) or (str(request.form.get('paye', '')).lower() in ('1','true','on','yes'))
         mode_paiement_prevu = (request.form.get('mode_paiement_prevu') or 'CB ASSO7').strip()
 
+        # --- SOLO (checkbox)
+        solo_flag = ('solo' in request.form) or (str(request.form.get('solo', '')).lower() in ('1','true','on','yes'))
+
         # --- Frais prévisionnels saisis (peut être vide)
         frais_prev_str = (request.form.get('frais_previsionnels') or '').strip()
 
@@ -362,7 +365,8 @@ def ajouter_concert():
             lieu=lieu_obj.nom,          # affichage historique si besoin
             lieu_id=lieu_obj.id,        # LIEN FORT
             paye=paye,
-            mode_paiement_prevu=mode_paiement_prevu or 'CB ASSO7'
+            mode_paiement_prevu=mode_paiement_prevu or 'CB ASSO7',
+            solo=solo_flag              # ⬅️ NEW
         )
 
         # Recette réelle vs attendue
@@ -408,13 +412,15 @@ def ajouter_concert():
 
 
 
+
+
 @app.route('/concert/modifier/<int:concert_id>', methods=['GET', 'POST'])
 def modifier_concert(concert_id):
     concert = Concert.query.get_or_404(concert_id)
 
     if request.method == 'POST':
         concert.date = date.fromisoformat(request.form['date'])
-        concert.lieu = request.form['lieu']
+        concert.lieu = (request.form.get('lieu') or '').strip()
 
         # Tolérant aux virgules
         recette_input = (request.form.get('recette') or '').strip()
@@ -431,6 +437,9 @@ def modifier_concert(concert_id):
         else:
             concert.recette = None
             concert.recette_attendue = None
+
+        # ✅ NEW: Solo
+        concert.solo = ('solo' in request.form)
 
         db.session.commit()
 
@@ -1516,9 +1525,15 @@ def ajuster_gains():
 
 # --------- CRUD OPERATIONS ---------
     
+# Helper anti "open redirect"
+def _safe_next(url: str | None) -> str | None:
+    if not url:
+        return None
+    # on n'accepte que des chemins relatifs type "/concerts" (pas d'URL externe)
+    if url.startswith("/") and not url.startswith("//"):
+        return url
+    return None
 
-from flask import request, render_template, redirect, url_for, flash
-from datetime import date
 
 @app.route('/operations', methods=['GET', 'POST'])
 def operations():
@@ -1599,7 +1614,10 @@ def operations():
             valider_concert_par_operation(data['concert_id'], data['montant'])
 
         flash("✅ Opération enregistrée", "success")
-        return redirect(url_for('operations'))
+
+        # ➜ Nouveau : retour à la page d'où l'on vient si "next" est fourni
+        next_url = _safe_next(request.form.get('next'))
+        return redirect(next_url or url_for('operations'))
 
     # -------- CHARGEMENT DE LA PAGE (GET) --------
     musiciens = Musicien.query.filter(
@@ -1615,7 +1633,55 @@ def operations():
     concerts_js = preparer_concerts_js(concerts)
     concertsData = preparer_concerts_data()
     today = date.today()
-    current_date = today.strftime("%d/%m/%Y")
+
+    # ===== Pré-remplissage (nouveau) =====
+    prefill_date = None
+    prefill_concert_label = None
+    prefill_concert_id = None
+
+    # URL de retour proposée : ?next=/la/page/courante
+    next_url = _safe_next(request.args.get('next')) or _safe_next(request.referrer)
+
+    # 1) Si concert_id passé en GET → on préremplit
+    try:
+        cid = request.args.get('concert_id', type=int)
+    except Exception:
+        cid = None
+
+    if cid:
+        c = Concert.query.get(cid)
+        if c:
+            prefill_concert_id = c.id
+            # Libellé "JJ/MM/AAAA — NomLieu — Organisme, Ville"
+            if getattr(c, 'lieu_obj', None):
+                parts = [c.lieu_obj.nom]
+                if getattr(c.lieu_obj, 'organisme', None):
+                    parts.append(c.lieu_obj.organisme)
+                right = " — ".join([p for p in parts if p])
+                if c.lieu_obj.ville:
+                    right = right + (", " + c.lieu_obj.ville if right else c.lieu_obj.ville)
+                prefill_concert_label = f"{c.date.strftime('%d/%m/%Y')} — {right or (c.lieu or '')}"
+            else:
+                prefill_concert_label = f"{c.date.strftime('%d/%m/%Y')} — {c.lieu or ''}"
+            prefill_date = c.date.strftime('%d/%m/%Y')
+
+    # 2) Sinon on accepte aussi ?date=YYYY-MM-DD ou ?date=DD/MM/YYYY
+    if not prefill_date:
+        date_raw = (request.args.get('date') or '').strip()
+        if date_raw:
+            try:
+                if '/' in date_raw:
+                    j, m, a = date_raw.split('/')
+                    prefill_date = f"{j.zfill(2)}/{m.zfill(2)}/{a}"
+                else:
+                    # YYYY-MM-DD -> JJ/MM/AAAA
+                    y, mo, d = date_raw.split('-')
+                    prefill_date = f"{d.zfill(2)}/{mo.zfill(2)}/{y}"
+            except Exception:
+                prefill_date = None
+
+    current_date = prefill_date or today.strftime("%d/%m/%Y")
+
     saison_en_cours = get_saison_actuelle()
     concerts_a_venir = Concert.query.filter(Concert.date >= date.today()).order_by(Concert.date).all()
     concerts_dicts_a_venir = [concert_to_dict(c) for c in concerts_a_venir]
@@ -1623,7 +1689,7 @@ def operations():
     concerts_par_musicien["__Recette_concert__"] = concerts_dicts_a_venir
 
     return render_template(
-        'operations.html',
+        'operations.html',                    # (ou ton template actuel)
         titre_formulaire="Nouvelle opération",
         operation=None,
         musiciens=musiciens_dicts,
@@ -1634,7 +1700,12 @@ def operations():
         concerts_par_musicien=concerts_par_musicien,
         concertsParMusicien=concerts_par_musicien,
         current_date=current_date,
-        saison_en_cours=saison_en_cours
+        saison_en_cours=saison_en_cours,
+        # >>> Pré-remplissage + retour
+        prefill_date=prefill_date,
+        prefill_concert_label=prefill_concert_label,
+        prefill_concert_id=prefill_concert_id,
+        next_url=next_url,
     )
 
 

@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    		  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">		
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <title>Modifier un concert</title>
     <style>
     body {
@@ -74,7 +74,6 @@
       accent-color: #2196f3;
       cursor: pointer;
     }
-
     </style>
 </head>
 <body>
@@ -87,36 +86,42 @@
       <label for="lieu">Lieu</label>
       <input type="text" name="lieu" value="{{ concert.lieu }}" required>
 
-		<label for="recette">Recette (€)</label>
-		<input type="text" name="recette" id="recette"
-			   value="{{ recette_initiale if recette_initiale is not none else '' }}"
-			   inputmode="decimal" placeholder="ex : 550,00">
+      <label for="recette">Recette (€)</label>
+      <input type="text" name="recette" id="recette"
+             value="{{ recette_initiale if recette_initiale is not none else '' }}"
+             inputmode="decimal" placeholder="ex : 550,00">
 
-	  
-		<div class="form-group" style="margin-top:8px;">
-		  <label for="frais_previsionnels">Frais prévisionnels</label>
-		  <input
-			type="text"
-			id="frais_previsionnels"
-			name="frais_previsionnels"
-			inputmode="decimal"
-			placeholder="ex : 120,00"
-			value="{{ concert.frais_previsionnels if concert.frais_previsionnels is not none else '' }}"
-			{% if concert.paye %}disabled{% endif %}>
-		  {% if concert.paye %}
-			<small class="muted">Concert payé — les prévisions sont désactivées.</small>
-		  {% else %}
-			<small class="muted">Comptés dans le partage tant que le concert n’est pas payé (affiché en gris).</small>
-		  {% endif %}
-		</div>
-			  
+      <!-- Case SOLO -->
+      <div class="paye-row" style="gap:24px; align-items:center;">
+        <label for="solo" class="paye-label" style="margin:0;">Solo</label>
+        <input type="checkbox" name="solo" id="solo"
+               class="paye-checkbox"
+               {% if concert.solo %}checked{% endif %}>
+      </div>
 
+      <div class="form-group" style="margin-top:8px;">
+        <label for="frais_previsionnels">Frais prévisionnels</label>
+        <input
+          type="text"
+          id="frais_previsionnels"
+          name="frais_previsionnels"
+          inputmode="decimal"
+          placeholder="ex : 120,00"
+          value="{{ concert.frais_previsionnels if concert.frais_previsionnels is not none else '' }}"
+          {% if concert.paye %}disabled{% endif %}>
+        {% if concert.paye %}
+          <small class="muted">Concert payé — les prévisions sont désactivées.</small>
+        {% else %}
+          <small class="muted">Comptés dans le partage tant que le concert n’est pas payé (affiché en gris).</small>
+        {% endif %}
+      </div>
 
       <input type="hidden" name="saison" value="{{ saison|replace('/', '-') }}">
-	<div class="button-row">
-	  <button type="submit" class="valider-button">Valider</button>
-	  <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-	</div>
+
+      <div class="button-row">
+        <button type="submit" class="valider-button">Valider</button>
+        <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
+      </div>
     </form>
   </div>
 </body>
