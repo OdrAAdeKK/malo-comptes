@@ -20,22 +20,17 @@
     </div>
     <input type="hidden" name="lieu_id" id="lieu_id">
   </div>
-  <div style="flex:1;">
-    <label>&nbsp;</label>
-    <button type="button" class="valider-button" id="btn_new_lieu">+ Nouveau lieu</button>
-  </div>
+<!-- Bouton centré entre Lieu et Recette -->
+<div class="btn-nouveau-lieu-row">
+  <button type="button" class="valider-button" id="btn_new_lieu">+ Nouveau lieu</button>
+</div>
+
 </div>
 
 
 
 <!-- (optionnel) champ 'lieu' texte brut (legacy) -->
-<div class="form-row-flex">
-  <div style="flex:1;">
-    <label for="lieu">Libellé lieu (texte)</label>
-    <input type="text" name="lieu" id="lieu" value="">
-    <small class="muted-italic">Si tu sélectionnes une fiche, ce champ peut rester vide.</small>
-  </div>
-</div>
+
 
   <label for="recette">Recette (€)</label>
   <input type="number" step="0.01" name="recette">
@@ -71,12 +66,18 @@
 	  </label>
 	</div>
 
-<div class="paye-row" style="gap:24px; align-items:center;">
-  <label for="paye" class="paye-label" style="margin-right:8px;">Payé</label>
-  <input type="checkbox" class="paye-checkbox" name="paye" id="paye">
+<div class="paye-row">
+  <!-- PAYÉ à gauche -->
+  <label class="paye-wrap" for="paye">
+    <span>Payé</span>
+    <input type="checkbox" class="paye-checkbox" name="paye" id="paye">
+  </label>
 
-  <label for="solo" class="paye-label" style="margin:0 8px 0 24px;">Solo</label>
-  <input type="checkbox" name="solo" id="solo" style="transform: scale(1.15);">
+  <!-- SOLO à droite -->
+  <label class="solo-wrap" for="solo">
+    <input type="checkbox" name="solo" id="solo">
+    <span>Solo</span>
+  </label>
 </div>
 
 
@@ -142,9 +143,18 @@ let compteChoisi = null;
 
 // Gère la soumission du formulaire
 document.querySelector('form').addEventListener('submit', function(e) {
+  // 1) LIEU OBLIGATOIRE (on force la fiche)
+  const hid = document.getElementById('lieu_id');
+  if (!hid || !hid.value) {
+    e.preventDefault();
+    alert("Merci de sélectionner un LIEU (fiche) ou d'en créer un via '+ Nouveau lieu'.");
+    document.getElementById('lieu_label')?.focus();
+    return;
+  }
+
+  // 2) Si "Payé" coché, on exige le choix du compte avant d'envoyer
   const payeCheckbox = document.getElementById('paye');
   if (payeCheckbox && payeCheckbox.checked && !compteChoisi) {
-    // On bloque le submit pour ouvrir le pop-up
     e.preventDefault();
     document.getElementById('popupPaiement').showModal();
   }
@@ -153,8 +163,9 @@ document.querySelector('form').addEventListener('submit', function(e) {
 // Valider le pop-up et soumettre le formulaire
 document.getElementById('validerPaiement').onclick = function() {
   compteChoisi = document.querySelector('input[name="compte"]:checked').value;
+
   // Crée (ou met à jour) un champ caché dans le formulaire principal
-  let form = document.querySelector('form');
+  const form = document.querySelector('form');
   let hidden = form.querySelector('input[name="compte_paiement"]');
   if (!hidden) {
     hidden = document.createElement('input');
@@ -163,6 +174,7 @@ document.getElementById('validerPaiement').onclick = function() {
     form.appendChild(hidden);
   }
   hidden.value = compteChoisi;
+
   fermerPopupPaiement();
   form.submit();
 };
@@ -172,12 +184,12 @@ function fermerPopupPaiement() {
 }
 </script>
 
+
 <script>
 (function() {
   const inp = document.getElementById('lieu_label');
   const box = document.getElementById('lieu_suggest');
   const hid = document.getElementById('lieu_id');
-  const legacy = document.getElementById('lieu');
 
   const newBtn = document.getElementById('btn_new_lieu');
   const modal  = document.getElementById('modal_lieu');
@@ -208,7 +220,6 @@ function fermerPopupPaiement() {
             div.addEventListener('mousedown', () => {
               inp.value = item.nom;
               hid.value = item.id;
-              if (legacy) legacy.value = ''; // si on choisit une fiche, on vide le texte libre
               hideSuggest();
             });
             box.appendChild(div);
@@ -255,13 +266,13 @@ function fermerPopupPaiement() {
       // Renseigne la sélection dans le formulaire concert
       hid.value = res.lieu.id;
       inp.value = res.lieu.nom;
-      if (legacy) legacy.value = ''; // on privilégie la fiche
       closeModal();
     })
     .catch(() => alert('Erreur réseau'));
   });
 })();
 </script>
+
 
 <script src="{{ url_for('static', filename='js/lieux_autocomplete.js') }}"></script>
 <script>document.addEventListener('DOMContentLoaded', () => initLieuxUI());</script>
@@ -302,13 +313,22 @@ function fermerPopupPaiement() {
     border: 1px solid #ccc;
     border-radius: 5px;
   }
-  .paye-row {
-    display: flex;
-    align-items: center;
-    margin-bottom: 24px;
-    margin-top: 8px;
-    gap: 18px;
-  }
+.paye-row{
+  display:flex;
+  justify-content:space-between;   /* Solo collé à gauche, Payé collé à droite */
+  align-items:center;
+  gap:18px;
+  margin: 12px 0 24px;
+}
+
+.solo-wrap,
+.paye-wrap{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-weight:700;
+  font-size:1.1em;
+}
   .paye-label {
     font-weight: bold;
     font-size: 1.1em;
@@ -319,5 +339,28 @@ function fermerPopupPaiement() {
     transform: scale(1.35);
     margin-top: 0;
   }
+  
+.paye-checkbox{
+  transform: scale(1.35);
+  margin:0; /* propre */
+}
+
+#solo{
+  transform: scale(1.15);
+}  
+  /* Centre le bouton et ajoute un espace avant "Recette" */
+.btn-nouveau-lieu-row{
+  display:flex;
+  justify-content:center;      /* centre horizontalement */
+  align-items:center;          /* centre le contenu dans la ligne */
+  min-height:56px;             /* approximativement la hauteur d’un input */
+  margin: 8px 0 18px;          /* remonte un peu + espace avant "Recette" */
+}
+
+/* Optionnel : un tout petit ajustement visuel du bouton */
+.btn-nouveau-lieu-row .valider-button{
+  padding-inline: 22px;
+}
+
 </style>
 {% endblock %}
