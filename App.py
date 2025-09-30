@@ -1914,24 +1914,29 @@ from mes_utils import grouper_par_mois
 from sqlalchemy import or_
 from datetime import date
 
+from sqlalchemy import asc
+# si pas déjà fait :
+# from zoneinfo import ZoneInfo
+# def today_paris():
+#     from datetime import datetime
+#     return datetime.now(ZoneInfo("Europe/Paris")).date()
+
 @app.route("/operations_a_venir")
 def operations_a_venir():
-    today = date.today()
+    # Utilise le "vrai" aujourd'hui en Europe/Paris
+    aujourdhui = today_paris()  # remplace date.today()
+
     operations = (
         db.session.query(Operation)
-        .filter(
-            Operation.date > today,
-            or_(Operation.auto_cb_asso7.is_(None), Operation.auto_cb_asso7.is_(False))
-        )
-        .order_by(Operation.date)
+        .join(Musicien)  # pour pouvoir afficher le bénéficiaire sans requêtes N+1
+        .filter(Operation.date >= aujourdhui)
+        .order_by(asc(Operation.date), asc(Operation.id))
         .all()
     )
 
     # 🔹 Regroupement par mois avec labels FR
     groupes = grouper_par_mois(operations, "date")
-
     return render_template("operations_a_venir.html", groupes=groupes)
-
 
 # --------- CRUD CACHETS ---------
     
