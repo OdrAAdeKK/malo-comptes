@@ -396,9 +396,7 @@ def calculer_credit_actuel(musicien, concerts):
             else:
                 credit += credits.get(musicien.id, 0)
 
-    report = Report.query.filter_by(musicien_id=musicien.id).first()
-    if report:
-        credit += report.montant or 0.0
+
 
     operations = Operation.query.filter_by(musicien_id=musicien.id).all()
     for op in operations:
@@ -1332,6 +1330,35 @@ def enregistrer_operation_en_db(data):
             )
             db.session.add(commission_credit)
 
+    # --- LIEN AUTO POUR ASSO7 -> CB/CAISSE SELON LE MODE ---
+    # Si on saisit une opération sur ASSO7, on crée une op miroir sur CB ASSO7 (mode Compte)
+    # ou CAISSE ASSO7 (mode Espèces) pour impacter la trésorerie.
+    # Cette op "auto_cb_asso7" est ignorée côté ASSO7 dans les totaux.
+    if cible_nom_normalise == "asso7":
+        mode_val = (data.get("mode") or "Compte").strip().lower()
+
+        # cible trésorerie: CB pour "compte/cb/carte", CAISSE pour "espèces/caisse"
+        cible_treso = None
+        if mode_val in ("compte", "cb", "carte", "cb asso7"):
+            cible_treso = next((m for m in musiciens if (m.nom or "").strip().lower() == "cb asso7"), None)
+        elif mode_val in ("especes", "espèces", "caisse", "caisse asso7"):
+            cible_treso = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
+
+        if cible_treso:
+            op_treso = Operation(
+                musicien_id=cible_treso.id,
+                type=type_op,                         # même type que l'op principale (debit/crédit)
+                motif=(motif or ""),
+                precision=(precision or f"Auto pour ASSO7 ({mode_val})"),
+                montant=float(montant),
+                date=date_op,
+                concert_id=concert_id,
+                auto_cb_asso7=True,                   # clé : comptera dans CB/CAISSE mais pas pour ASSO7
+                operation_liee_id=op.id               # lien vers l'op principale
+            )
+            db.session.add(op_treso)
+
+
     # 🔄 Débit automatique sur CB ASSO7 ou CAISSE ASSO7 si Salaire
     if is_salaire and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
         mode = (data.get("mode") or "Compte").strip()
@@ -1764,11 +1791,82 @@ def modifier_operation_en_db(operation_id, form_data):
     op.brut = float(brut_val) if brut_val is not None else None
     op.concert_id = concert_id  # <-- important pour éviter l'INSERT/UPDATE avec '' sur INTEGER
 
-    # --- Supprimer les opérations techniques liées existantes ---
+    db.session.flush()
+
+    # --- Supprimer SEULEMENT les opérations techniques non 'auto_cb_asso7' ---
+    # (on garde l'op liée trésorerie pour la mettre à jour juste après)
     operations_techniques = Operation.query.filter_by(operation_liee_id=op.id).all()
     for op_tech in operations_techniques:
+        # Si l'attribut n'existe pas, getattr(...) renverra False par défaut
+        if getattr(op_tech, "auto_cb_asso7", False):
+            continue  # on préserve cette op, elle sera synchronisée ci-dessous
         db.session.delete(op_tech)
     db.session.flush()
+
+    # --- Sync / recréation de l'opération liée auto_cb_asso7 lors d'une MODIFICATION ---
+    try:
+        cible_nom = (getattr(op.musicien, "nom", "") or "").strip().lower()
+
+        if cible_nom == "asso7":
+            mode_val = (str(data.get("mode") or "Compte")).strip().lower()
+
+            # Trouver la cible trésorerie (CB ou CAISSE)
+            cb = next((m for m in musiciens if (m.nom or "").strip().lower() == "cb asso7"), None)
+            caisse = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
+
+            cible_treso = None
+            if mode_val in ("compte", "cb", "carte", "cb asso7"):
+                cible_treso = cb
+            elif mode_val in ("especes", "espèces", "caisse", "caisse asso7"):
+                cible_treso = caisse
+
+            # Retrouver l'opération liée auto (si elle existe encore)
+            op_auto = Operation.query.filter_by(
+                operation_liee_id=op.id,
+                auto_cb_asso7=True
+            ).first()
+
+            if cible_treso is None:
+                # Pas de cible trésor => on supprime l'op auto si elle existe
+                if op_auto:
+                    db.session.delete(op_auto)
+            else:
+                if op_auto:
+                    # Mettre à jour l'op liée existante
+                    op_auto.musicien_id = cible_treso.id
+                    op_auto.type = op.type                       # 'debit' ou 'credit'
+                    op_auto.motif = op.motif or ""
+                    op_auto.precision = op.precision or f"Auto pour ASSO7 ({mode_val})"
+                    op_auto.montant = float(op.montant or 0)
+                    op_auto.date = op.date
+                    op_auto.concert_id = op.concert_id
+                    op_auto.auto_cb_asso7 = True
+                else:
+                    # Recréer l'op liée si elle a disparu
+                    op_auto = Operation(
+                        musicien_id=cible_treso.id,
+                        type=op.type,
+                        motif=op.motif or "",
+                        precision=op.precision or f"Auto pour ASSO7 ({mode_val})",
+                        montant=float(op.montant or 0),
+                        date=op.date,
+                        concert_id=op.concert_id,
+                        auto_cb_asso7=True,
+                        operation_liee_id=op.id
+                    )
+                    db.session.add(op_auto)
+        else:
+            # Si ce n'est plus ASSO7, supprimer l'auto-op éventuelle
+            op_auto = Operation.query.filter_by(
+                operation_liee_id=op.id,
+                auto_cb_asso7=True
+            ).first()
+            if op_auto:
+                db.session.delete(op_auto)
+
+    except Exception as e:
+        # Utilise ton logger applicatif si disponible
+        print("Erreur sync op auto_cb_asso7 lors de la modification:", e)
 
     # --- Génération des opérations techniques (comme lors de la création) ---
     is_salaire = (motif == "Salaire")
@@ -1801,7 +1899,7 @@ def modifier_operation_en_db(operation_id, form_data):
 
     is_remb_frais = (str(motif or "").strip().lower() == "remboursement frais divers")
 
-    # 🔥 Débit automatique du compte payeur (CB/CAISSE) pour Salaire ou Remboursement frais
+    # 🔥 Débit automatique du compte payeur (CB/CAISSE) pour Salaire ou Remboursement frais (≠ ASSO7)
     if (is_salaire or is_remb_frais) and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
         mode_val = (data.get("mode") or "Compte").strip().lower()
         cible_debit = None
@@ -1857,6 +1955,32 @@ def modifier_operation_en_db(operation_id, form_data):
     return op
 
 
+
+# --- Back-compat: options de motifs par bénéficiaire ---
+def motifs_pour_beneficiaire(nom_beneficiaire: str) -> list[str]:
+    """
+    Ancien helper utilisé par certaines vues.
+    Retourne une liste de motifs suggérés selon le bénéficiaire.
+    """
+    b = (nom_beneficiaire or "").strip().lower()
+    structures = {"asso7", "cb asso7", "caisse asso7", "treso asso7"}
+    if b in structures:
+        # pour comptes structure/asso7
+        return [
+            "Recette concert",
+            "Frais",
+            "Commission Lionel",
+            "Virement",
+            "Divers",
+        ]
+    # pour musiciens "personnes"
+    return [
+        "Salaire",
+        "Remboursement frais divers",
+        "Frais",
+        "Virement",
+        "Divers",
+    ]
 
 
 # ─────────────────────────────────────────────
