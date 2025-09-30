@@ -396,9 +396,7 @@ def calculer_credit_actuel(musicien, concerts):
             else:
                 credit += credits.get(musicien.id, 0)
 
-    report = Report.query.filter_by(musicien_id=musicien.id).first()
-    if report:
-        credit += report.montant or 0.0
+
 
     operations = Operation.query.filter_by(musicien_id=musicien.id).all()
     for op in operations:
@@ -859,6 +857,9 @@ def creer_recette_concert_si_absente(concert_id, montant=None, date_op=None, mod
             f"Attendu: CB ASSO7 ou CAISSE ASSO7."
         )
 
+
+    
+    
     # -- Idempotence : existe déjà ? --
     op_existante = Operation.query.filter_by(
         motif="Recette concert",
@@ -1230,19 +1231,13 @@ def enregistrer_operation_en_db(data):
         s = str(x).strip()
         return int(s) if s.isdigit() else None
 
-    def _infer_type_from_motif_if_missing(type_val, motif_val):
-        t = (type_val or "").strip().lower()
-        if t:
-            # normalisation simple
-            return "credit" if t.startswith("cr") else "debit"
-        m = (motif_val or "").strip().lower()
-        if m == "salaire":
-            return "debit"
-        if m == "recette concert":
-            return "credit"
-        # Frais: par défaut, on laissera la logique plus bas (CB/CAISSE) décider,
-        # mais s'il faut un fallback strict :
-        return "debit"
+
+
+
+    # >>> petit helper pour retrouver un "compte" par nom strict
+    def _find_by_nom_strict(nom_recherche: str):
+        nom_recherche = (nom_recherche or "").strip().lower()
+        return next((m for m in musiciens if (m.nom or "").strip().lower() == nom_recherche), None)
 
     nom_saisi = (data.get("musicien") or "").strip().lower()
     musiciens = Musicien.query.all()
@@ -1253,6 +1248,9 @@ def enregistrer_operation_en_db(data):
     )
     if not cible:
         raise ValueError(f"Musicien introuvable pour le nom : {data.get('musicien')}")
+        
+    # ✅ toujours définir cette variable AVANT de s’en servir
+    cible_nom_normalise = ((cible.nom or "") if cible else "").strip().lower()        
 
     # 📆 Conversion date : accepte 'jj/mm/aaaa' ou déjà 'aaaa-mm-jj'
     date_str = (data.get("date") or "").strip()
@@ -1271,12 +1269,11 @@ def enregistrer_operation_en_db(data):
 
     # Champs normalisés
     motif = data.get("motif")
-    type_op = _infer_type_from_motif_if_missing(data.get("type"), motif)
+    type_op = _infer_type_from_motif_if_missing(data.get("type"), motif, cible_nom_normalise)
     precision = data.get("precision", "")
 
-    # 🎯 Déduction automatique du type selon le motif (garde ta logique existante)
-    cible_nom_normalise = (cible.nom or "").strip().lower()
-    concert_id = _to_int_or_none(data.get("concert_id"))  # <- *** fix: '' devient None ***
+
+    concert_id = _to_int_or_none(data.get("concert_id"))
     if motif == "Frais":
         type_op = "debit" if cible_nom_normalise in ["cb asso7", "caisse asso7"] else "credit"
     elif motif == "Recette concert":
@@ -1298,12 +1295,12 @@ def enregistrer_operation_en_db(data):
         montant=float(montant),
         date=date_op,
         brut=float(brut_val) if brut_val is not None else None,
-        concert_id=concert_id  # <- None si vide, OK pour INTEGER NULL en DB
+        concert_id=concert_id
     )
     db.session.add(op)
     db.session.flush()
 
-    # 💸 Commission Lionel sur salaire brut
+    # 💸 Commission Lionel sur salaire brut (inchangé)
     is_salaire = (motif == "Salaire")
     has_brut = (brut_val is not None and float(brut_val) > 0)
     if is_salaire and has_brut:
@@ -1332,14 +1329,14 @@ def enregistrer_operation_en_db(data):
             )
             db.session.add(commission_credit)
 
-    # 🔄 Débit automatique sur CB ASSO7 ou CAISSE ASSO7 si Salaire
+    # 🔄 Débit automatique CB/CAISSE pour Salaire (inchangé)
     if is_salaire and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
         mode = (data.get("mode") or "Compte").strip()
         cible_debit = None
         if mode.lower() == "compte":
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "cb asso7"), None)
+            cible_debit = _find_by_nom_strict("cb asso7")
         elif mode.lower() in ("especes", "espèces"):
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
+            cible_debit = _find_by_nom_strict("caisse asso7")
 
         if cible_debit:
             db.session.flush()
@@ -1354,19 +1351,17 @@ def enregistrer_operation_en_db(data):
                 auto_debit_salaire=True
             )
             db.session.add(debit_salaire)
-
-            # 🛠️ Lien vers op principal, mais PAS de réajout
             op.operation_liee_id = debit_salaire.id
 
-    # 🔄 Débit automatique sur CB ASSO7 / CAISSE ASSO7 aussi pour "Remboursement frais divers"
+    # 🔄 Débit automatique CB/CAISSE pour "Remboursement frais divers" (inchangé)
     is_remb_frais = (str(motif or "").strip().lower() == "remboursement frais divers")
     if (is_salaire or is_remb_frais) and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
         mode_val = (data.get("mode") or "Compte").strip().lower()
         cible_debit = None
         if mode_val == "compte":
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "cb asso7"), None)
+            cible_debit = _find_by_nom_strict("cb asso7")
         elif mode_val in ("especes", "espèces"):
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
+            cible_debit = _find_by_nom_strict("caisse asso7")
 
         if cible_debit:
             db.session.flush()
@@ -1381,28 +1376,51 @@ def enregistrer_operation_en_db(data):
                 operation_liee_id=op.id
             )
             db.session.add(debit_auto)
-            # on lie aussi l'op principale au débit auto
             op.operation_liee_id = debit_auto.id
             db.session.add(op)
 
+    # >>> ASSO7 → op liée CB/CAISSE (NOUVEAU)
+    # Pour toute opération saisie au bénéfice d'ASSO7 (Achat/Vente/Débit/Crédit),
+    # on crée une opération miroir sur le compte de paiement (CB ou CAISSE).
+    if cible_nom_normalise == "asso7":
+        mode_val = (data.get("mode") or "Compte").strip().lower()
+        compte_cible = None
+        if mode_val == "compte":
+            compte_cible = _find_by_nom_strict("cb asso7")
+        elif mode_val in ("especes", "espèces"):
+            compte_cible = _find_by_nom_strict("caisse asso7")
 
-    # 🧾 Mise à jour frais sur concert si motif = Frais
+        if compte_cible:
+            db.session.flush()
+            op_liee = Operation(
+                musicien_id=compte_cible.id,
+                type=type_op,                 # même sens: debit/credit
+                motif=motif,                  # Achat/Vente/etc.
+                precision=(precision or "").strip() or f"Op liée ASSO7 ({mode_val})",
+                montant=float(montant),
+                date=date_op,
+                operation_liee_id=op.id,
+                # flag pour filtrage affichage mais inclusion dans soldes CB/CAISSE
+                auto_cb_asso7=True
+            )
+            db.session.add(op_liee)
+            # Lier aussi l'op principale si tu veux la réciprocité
+            op.operation_liee_id = op_liee.id
+            db.session.add(op)
+
+    # 🧾 Mise à jour frais sur concert si motif = Frais (inchangé)
     if (motif or "").lower() == "frais" and concert_id:
         try:
             concert = Concert.query.get(concert_id)
             if concert:
-                # 1) toujours recalculer la somme des frais SQL (évite écarts si modifs/suppressions)
                 recalculer_frais_concert(concert.id)
-                db.session.flush()  # s'assure que concert.frais est à jour en DB
-
-                # 2) recalcul immédiat des potentiels pour CE concert
+                db.session.flush()
                 from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
                 mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
         except Exception as e:
             print("⚠️ Erreur mise à jour frais concert:", e)
 
-
-    # 💡 Si Recette concert : marquer le concert comme payé
+    # 💡 Si Recette concert : marquer le concert comme payé (inchangé)
     if motif == "Recette concert" and concert_id:
         concert = Concert.query.get(concert_id)
         if concert:
@@ -1412,12 +1430,9 @@ def enregistrer_operation_en_db(data):
                 db.session.add(concert)
                 print(f"[✓] Concert {concert_id} marqué comme payé")
 
-    # 💾 Enregistrement global + recalcul
+    # 💾 Enregistrement global + recalcul (inchangé)
     try:
         db.session.commit()
-        
-        # --- RECOMPUTE POTENTIAL (FIX UnboundLocalError) --------------------------
-        # Recalcule le crédit potentiel si l'opération est liée à un concert
         cid_raw = data.get("concert_id")
         try:
             cid = int(str(cid_raw).strip()) if cid_raw else None
@@ -1425,15 +1440,12 @@ def enregistrer_operation_en_db(data):
             cid = None
 
         if cid:
-            # Import local AVANT l'appel (évite l'UnboundLocalError)
             from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
             try:
                 mettre_a_jour_credit_calcule_potentiel_pour_concert(cid)
             except Exception as e:
-                # On logge mais on ne casse pas la requête
                 print(f"[WARN] Recalcul potentiel ignoré pour concert {cid}: {e}")
-    # --------------------------------------------------------------------------
-            
+
         print(f"[OK] Operation {motif} enregistrée pour {data.get('musicien')}")
 
         if concert_id:
@@ -1677,187 +1689,50 @@ def modifier_operation_en_db(operation_id, form_data):
         s = str(x).strip()
         return int(s) if s.isdigit() else None
 
-    def _infer_type_from_motif_if_missing(type_val, motif_val, cible_nom_norm):
-        t = (type_val or "").strip().lower()
-        if t:
-            return "credit" if t.startswith("cr") else "debit"
-        m = (motif_val or "").strip().lower()
-        if m == "salaire":
-            return "debit"
-        if m == "recette concert":
-            return "credit"
-        if m == "frais":
-            return "debit" if cible_nom_norm in ["cb asso7", "caisse asso7"] else "credit"
-        return "debit"
+    def _find_by_nom_strict(nom_recherche: str):
+        nom_recherche = (nom_recherche or "").strip().lower()
+        return next((m for m in musiciens if (m.nom or "").strip().lower() == nom_recherche), None)
 
-    # Copie modifiable
-    data = dict(form_data)
+# ---- Helper unique, global (placer hors de toute autre fonction) ----
+def _infer_type_from_motif_if_missing(type_val, motif_val, cible_nom_norm):
+    t = (type_val or "").strip().lower()
+    m = (motif_val or "").strip().lower()
+    cible = (cible_nom_norm or "").strip().lower()
+    is_structure = cible in ("asso7", "cb asso7", "caisse asso7")
 
-    # Conversion de la date JJ/MM/AAAA → AAAA-MM-JJ si besoin
-    if "date" in data and isinstance(data["date"], str) and "/" in data["date"]:
-        try:
-            jour, mois, annee = data["date"].split("/")
-            data["date"] = f"{annee}-{mois.zfill(2)}-{jour.zfill(2)}"
-        except Exception as e:
-            print("Erreur de conversion date :", data.get("date"), e)
-            raise
+    if is_structure:
+        if m == "vente": return "credit"
+        if m == "achat": return "debit"
+        if m in ("divers", "autre"):
+            return ("credit" if t.startswith("cr") else "debit") if t else "debit"
 
-    # --- Récupération de l'opération principale
-    op = db.session.get(Operation, operation_id)
-    if not op:
-        raise ValueError(f"Opération ID={operation_id} introuvable.")
+    if t:
+        return "credit" if t.startswith("cr") else "debit"
 
-    # --- Récupération de tous les musiciens
-    musiciens = Musicien.query.all()
+    if m == "salaire": return "debit"
+    if m == "recette concert": return "credit"
+    if m == "frais": return "debit" if cible in ("cb asso7", "caisse asso7") else "credit"
+    if m == "remboursement frais divers": return "debit"
+    return "debit"
 
-    # --- Détermination du musicien cible ---
-    musicien_id = data.get("musicien")  # ID (str) attendu, mais on tolère legacy nom complet
-    nom_saisi = (data.get("musicien_nom") or "").strip().lower()  # Ancien fallback
 
-    cible = None
-    if musicien_id:
-        # Cherche d'abord par ID
-        cible = next((m for m in musiciens if str(m.id) == str(musicien_id)), None)
-        if not cible:
-            # Cas legacy : nom complet dans "musicien"
-            cible = next(
-                (m for m in musiciens if f"{(m.prenom or '').strip()} {(m.nom or '').strip()}".strip().lower() == str(musicien_id).strip().lower()),
-                None
-            )
-    elif nom_saisi:
-        # Fallback pour les vieux formulaires où seul le nom serait transmis
-        cible = next(
-            (m for m in musiciens if f"{(m.prenom or '').strip()} {(m.nom or '').strip()}".strip().lower() == nom_saisi),
-            None
-        )
-
-    if not cible:
-        raise ValueError(f"Musicien introuvable pour l'identifiant '{musicien_id}' ou le nom : '{nom_saisi}'")
-
-    # Conversion date si nécessaire (à ce stade, data["date"] est au bon format ISO)
-    try:
-        date_op = datetime.strptime(data["date"], "%Y-%m-%d").date()
-    except Exception as e:
-        print("Erreur de conversion date :", data["date"], e)
-        raise
-
-    # Normalisations champs
-    motif = data.get("motif")
-    cible_nom_normalise = (cible.nom or "").strip().lower()
-    concert_id = _to_int_or_none(data.get("concert_id"))  # <-- fix: '' -> None
-    montant_val = _to_float(data.get("montant"))
-    brut_val = _to_float(data.get("brut"))
-    if montant_val is None:
-        raise ValueError("Montant manquant ou invalide.")
-
-    # Type selon motif (même logique que création, avec fallback)
-    type_op = _infer_type_from_motif_if_missing(data.get("type"), motif, cible_nom_normalise)
-
-    # --- MAJ de l’opération principale (sans commit)
-    op.musicien = cible
-    op.date = date_op
-    op.type = type_op
-    op.mode = data.get("mode")
-    op.motif = motif
-    op.precision = data.get("precision")
-    op.montant = float(montant_val)
-    op.brut = float(brut_val) if brut_val is not None else None
-    op.concert_id = concert_id  # <-- important pour éviter l'INSERT/UPDATE avec '' sur INTEGER
-
-    # --- Supprimer les opérations techniques liées existantes ---
-    operations_techniques = Operation.query.filter_by(operation_liee_id=op.id).all()
-    for op_tech in operations_techniques:
-        db.session.delete(op_tech)
-    db.session.flush()
-
-    # --- Génération des opérations techniques (comme lors de la création) ---
-    is_salaire = (motif == "Salaire")
-    has_brut = (brut_val is not None and float(brut_val) > 0)
-    if is_salaire and has_brut:
-        commission = round(float(brut_val) * 0.03, 2)
-        commission_debit = Operation(
-            musicien_id=cible.id,
-            type="debit",
-            motif="Commission Lionel",
-            precision="3% brut salaire",
-            montant=commission,
-            date=date_op,
-            operation_liee_id=op.id
-        )
-        db.session.add(commission_debit)
-
-        lionel = next((m for m in musiciens if f"{(m.prenom or '').strip()} {(m.nom or '').strip()}".lower() == "lionel arnould"), None)
-        if lionel:
-            commission_credit = Operation(
-                musicien_id=lionel.id,
-                type="credit",
-                motif="Commission Lionel",
-                precision=f"3% brut de {data.get('musicien') or (cible.prenom + ' ' + cible.nom)}",
-                montant=commission,
-                date=date_op,
-                operation_liee_id=op.id
-            )
-            db.session.add(commission_credit)
-
-    is_remb_frais = (str(motif or "").strip().lower() == "remboursement frais divers")
-
-    # 🔥 Débit automatique du compte payeur (CB/CAISSE) pour Salaire ou Remboursement frais
-    if (is_salaire or is_remb_frais) and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
-        mode_val = (data.get("mode") or "Compte").strip().lower()
-        cible_debit = None
-        if mode_val == "compte":
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "cb asso7"), None)
-        elif mode_val in ("especes", "espèces"):
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
-
-        if cible_debit:
-            db.session.flush()
-            lib = "Salaire" if is_salaire else "Remboursement frais"
-            debit_auto = Operation(
-                musicien_id=cible_debit.id,
-                type="debit",
-                motif=f"Débit {lib} {data.get('musicien') or (cible.prenom + ' ' + (cible.nom or ''))}".strip(),
-                precision=f"{lib} payé à {data.get('musicien') or (cible.prenom + ' ' + (cible.nom or ''))}".strip(),
-                montant=float(montant_val),
-                date=date_op,
-                operation_liee_id=op.id
-            )
-            db.session.add(debit_auto)
-            op.operation_liee_id = debit_auto.id
-            db.session.add(op)
-
-    # 🎫 FRAIS DE CONCERT
-    if (motif or "").lower() == "frais" and concert_id:
-        try:
-            concert = Concert.query.get(concert_id)
-            if concert:
-                recalculer_frais_concert(concert.id)
-        except Exception as e:
-            print("⚠️ Erreur mise à jour frais concert:", e)
-
-    db.session.commit()
-
-    # ✅ Recalcul du partage du concert concerné (après commit et rechargement)
-    if concert_id:
-        try:
-            from calcul_participations import partage_benefices_concert, mettre_a_jour_credit_calcule_potentiel
-            db.session.expire_all()
-            concert = Concert.query.get(concert_id)
-            if concert:
-                if concert.paye:
-                    print(f"🎯 Recalcul du crédit RÉEL pour concert payé ID={concert.id}")
-                    partage_benefices_concert(concert)
-                else:
-                    print(f"🎯 Recalcul du crédit POTENTIEL pour concert non payé ID={concert.id}")
-                    mettre_a_jour_credit_calcule_potentiel(concert)
-                db.session.commit()
-        except Exception as e:
-            print(f"⚠️ Erreur lors du recalcul du partage pour concert ID={concert_id} :", e)
-
-    return op
+    # fallback
+    return "debit"
 
 
 
+
+def motifs_pour_beneficiaire(nom_beneficiaire: str) -> list[str]:
+    nom = (nom_beneficiaire or "").strip().lower()
+    motifs_musicien   = ["Salaire", "Frais", "Remboursement frais divers", "Recette concert", "Autre"]
+    motifs_struct_std = ["Achat", "Vente", "Autre"]          # ASSO7
+    motifs_struct_cb  = ["Frais", "Achat", "Vente", "Autre"] # CB/CAISSE
+
+    if nom in ("cb asso7", "caisse asso7"):
+        return motifs_struct_cb
+    if nom in ("asso7",):
+        return motifs_struct_std
+    return motifs_musicien
 
 # ─────────────────────────────────────────────
 # 6. 📅 ARCHIVAGE / SAISONS
