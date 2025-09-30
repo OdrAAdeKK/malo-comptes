@@ -50,7 +50,7 @@ function initMusicienMotifLogic() {
   // ============= Règles de motifs autorisés
   const motifRules = {
     musicien: ["Salaire", "Frais", "Remboursement frais divers"],
-    "ASSO7": ["Achat", "Vente"],
+    "ASSO7": ["Achat","Vente","Divers"],   // <-- ajouté "Divers"
     "CB ASSO7": ["Frais", "Recette concert"],
     "CAISSE ASSO7": ["Frais", "Recette concert"]
   };
@@ -83,17 +83,24 @@ function initMusicienMotifLogic() {
     typeHidden.value = creditRadio.checked ? 'credit' : (debitRadio.checked ? 'debit' : '');
   }
 
-  function filterMotifs(benef) {
-    const allowed = allowedMotifsFor(benef);
-    Array.from(motifSelect.options).forEach(opt => {
-      const ok = allowed.includes(opt.value);
-      opt.disabled = !ok;
-      opt.hidden   = !ok;
-    });
-    if (!allowed.includes(motifSelect.value)) {
-      motifSelect.value = allowed[0];
-    }
+function filterMotifs(benef) {
+  // benef = 'musicien' ou le nom exact: "ASSO7", "CB ASSO7", "CAISSE ASSO7"
+  const allowed = motifRules[benef] || motifRules["musicien"];
+  const current = (motifSelect.value || "").trim();
+
+  // Reconstruit la liste (au lieu de cacher des options existantes)
+  motifSelect.innerHTML = "";
+  for (const label of allowed) {
+    const opt = document.createElement("option");
+    opt.value = label;
+    opt.textContent = label;
+    motifSelect.appendChild(opt);
   }
+
+  // Conserve l’ancienne valeur si encore autorisée, sinon 1ère (ASSO7 -> "Achat")
+  motifSelect.value = allowed.includes(current) ? current : allowed[0];
+}
+
 
   function lockEspecesIfCaisse(benef) {
     const isCaisse = benef === "CAISSE ASSO7";
@@ -119,52 +126,64 @@ function initMusicienMotifLogic() {
     }
   }
 
-  // ============= UI principale
-  function updateFormFields() {
-    const benef = (quiSelect.value || '').trim();
-    const motif = (motifSelect.value || '').trim();
+// ============= UI principale
+function updateFormFields() {
+  const benef = (quiSelect.value || '').trim();
 
-    // 1) Motifs autorisés selon benef
-    filterMotifs(isStructure(benef) ? benef : 'musicien');
+  // 1) Motifs autorisés selon benef (peut CHANGER la valeur sélectionnée)
+  filterMotifs(isStructure(benef) ? benef : 'musicien');
 
-    // 2) Spé CAISSE ASSO7
-    lockEspecesIfCaisse(benef);
-
-    // 3) Brut
-    syncBrut(motif);
-
-    // 4) Crédit/Débit selon motif + verrouillage
-    if (motif === "Vente") {
-      setType('credit', false);            // libre, mais on oriente
-    } else if (motif === "Recette concert") {
-      setType('credit', true);             // imposé
-    } else if (motif === "Salaire") {
-      setType('debit', true);              // imposé
-    } else if (motif === "Frais") {
-      if (benef === "CB ASSO7" || benef === "CAISSE ASSO7") {
-        setType('debit', true);            // frais d'une structure = débit
-      } else {
-        setType('credit', true);           // frais d'un musicien = crédit
-      }
-    } else if (motif === "Remboursement frais divers") {
-      setType('debit', true);              // toujours débit
-    } else {
-      unlockType();
-      syncHiddenFromRadios();
-    }
+  // ASSO7 : si, après filtrage, la valeur n'est pas dans la liste structure,
+  // on force "Achat" par défaut.
+  if (benef === 'ASSO7') {
+    const allowedASSO7 = ['Achat', 'Vente', 'Divers'];
+    const cur = (motifSelect.value || '').trim();
+    if (!allowedASSO7.includes(cur)) motifSelect.value = 'Achat';
   }
 
-  // Listeners
-  quiSelect  .addEventListener('change', updateFormFields);
-  motifSelect.addEventListener('change', updateFormFields);
-  creditRadio.addEventListener('change', syncHiddenFromRadios);
-  debitRadio .addEventListener('change', syncHiddenFromRadios);
+  // 🔁 Relire la valeur APRES filtrage / éventuel forçage
+  const motif = (motifSelect.value || '').trim();
 
-  // Init
-  updateFormFields();
+  // 2) Spé CAISSE ASSO7
+  lockEspecesIfCaisse(benef);
+
+  // 3) Brut
+  syncBrut(motif);
+
+  // 4) Crédit/Débit selon motif + verrouillage
+
+  // --- Règles STRUCTURES ---
+  if (benef === "ASSO7") {
+    if (motif === "Achat")  { setType('debit',  true);  return; }   // verrouillé
+    if (motif === "Vente")  { setType('credit', true);  return; }   // verrouillé
+    if (motif === "Divers") { unlockType(); syncHiddenFromRadios(); return; } // libre
+  }
+  if (benef === "CB ASSO7" || benef === "CAISSE ASSO7") {
+    if (motif === "Frais")           { setType('debit',  true); return; }
+    if (motif === "Recette concert") { setType('credit', true); return; }
+  }
+
+  // --- Règles MUSICIENS (inchangées) ---
+  if (motif === "Recette concert")            { setType('credit', true); return; }
+  if (motif === "Salaire")                    { setType('debit',  true); return; }
+  if (motif === "Frais")                      { setType('credit', true); return; }
+  if (motif === "Remboursement frais divers") { setType('debit',  true); return; }
+
+  // Par défaut : libre
+  unlockType();
+  syncHiddenFromRadios();
 }
 
+// -- BIND & INIT (AJOUTER CE BLOC) --
+quiSelect  .addEventListener('change', updateFormFields);
+motifSelect.addEventListener('change', updateFormFields);
+creditRadio.addEventListener('change', syncHiddenFromRadios);
+debitRadio .addEventListener('change', syncHiddenFromRadios);
 
+// Lancer une première fois pour filtrer selon le bénéficiaire courant
+updateFormFields();
+
+}
 
 /* ===============================
    3. Autocomplete + Calendrier Flatpickr

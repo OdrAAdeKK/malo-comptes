@@ -159,6 +159,12 @@ def accueil():
     return render_template('accueil.html')
 
 
+
+@app.get("/healthz")
+def healthz():
+    return "ok", 200
+
+
 # ---------- ROUTES CRUD MUSICIEN ----------
 
 # Lire/lister
@@ -1712,9 +1718,11 @@ def operations():
 
 @app.route('/modifier_operation/<int:id>', methods=['GET', 'POST'])
 def modifier_operation(id):
-    # ✅ Importer ici (une seule fois) pour éviter les UnboundLocalError
+    # ✅ Imports locaux pour éviter les soucis de portée
     from models import Concert, Musicien, Operation
     from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
+    # NEW ↓
+    from mes_utils import motifs_pour_beneficiaire
 
     operation = Operation.query.get_or_404(id)
 
@@ -1801,6 +1809,13 @@ def modifier_operation(id):
 
     today_str = date.today().isoformat()
 
+    # NEW ↓ Déterminer la bonne famille de motifs selon le bénéficiaire de l'opération
+    benef_nom = ""
+    if getattr(operation, "musicien", None):
+        # Chez toi, op.musicien.nom vaut typiquement "ASSO7" / "CB ASSO7" / "CAISSE ASSO7" / etc.
+        benef_nom = (operation.musicien.nom or "").strip()
+    motif_options = motifs_pour_beneficiaire(benef_nom)
+
     return render_template(
         'form_operations.html',
         titre_formulaire="Modifier une opération",
@@ -1813,8 +1828,9 @@ def modifier_operation(id):
         is_modification=True,
         concerts_par_musicien=concerts_par_musicien,
         concertsParMusicien=concerts_par_musicien,
+        # NEW ↓ passe la liste d'options au template
+        motif_options=motif_options,
     )
-
 
 
 @app.route('/operations/supprimer', methods=['POST'])
