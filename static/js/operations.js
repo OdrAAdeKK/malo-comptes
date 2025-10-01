@@ -188,229 +188,252 @@ updateFormFields();
 /* ===============================
    3. Autocomplete + Calendrier Flatpickr
    =============================== */
-
 function initConcertAutocomplete() {
-  const concertField = document.getElementById("concert_field");
-  const concertIdField = document.getElementById("concert_id");
-  const concertAutocomplete = document.getElementById("concert_autocomplete");
-  const calendarIcon = document.getElementById("calendar_icon");
-  const concertDatePicker = document.getElementById("concert_date_picker");
-  const musicienSelect = document.getElementById("musicien");
-  const motifSelect = document.getElementById("motif");
-  const dateField = document.getElementById("date");
+  const concertField       = document.getElementById("concert_field");       // champ visible "jj/mm/aaaa — lieu"
+  const concertIdField     = document.getElementById("concert_id");          // hidden: id du concert
+  const concertAutocomplete= document.getElementById("concert_autocomplete");// liste
+  const calendarIcon       = document.getElementById("calendar_icon");
+  const concertDatePicker  = document.getElementById("concert_date_picker"); // input pour flatpickr (caché)
+  const motifSelect        = document.getElementById("motif");
+  const dateField          = document.getElementById("date");
 
+  // ⚠️ musicien: select en création OU hidden en édition
+  const musicienInput = document.getElementById("musicien") || document.querySelector('input[name="musicien"]');
 
+  if (!concertField || !concertIdField || !concertDatePicker || !motifSelect) return;
 
-  // ✅ une seule déclaration ici
+  // Motifs qui exigent un concert lié
   const motifsQuiActivent = ["Frais", "Recette concert", "Remboursement frais divers"];
 
+  // ---- Données passées par le serveur ----
+  const allConcerts = (window.concerts || []).map(c => {
+    const [y, m, d] = c.date.split("-");
+    return { ...c, dateFr: `${d}/${m}/${y}` }; // c.date = "YYYY-MM-DD"
+  });
+  const concertsById = new Map(allConcerts.map(c => [String(c.id), c]));
 
-    // --- (Nouveau) Flatpickr sur champ date principal, en français ---
-    if (dateField) {
-        flatpickr(dateField, {
-            dateFormat: "d/m/Y",
-            locale: "fr",
-            allowInput: true
-        });
+  // concertsParMusicien peut être: { "Prénom Nom": [id, id...] } ou { "Prénom Nom": [{id,date,lieu}...] }
+  const CPM = window.concertsParMusicien || {};
+
+  // ---- Helpers ----
+  function currentMusicienName() {
+    return (musicienInput?.value || "").trim();
+  }
+  function formatDate(iso) {
+    const [y,m,d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  function allowedConcertsFor(name) {
+    const raw = CPM[name] || [];
+    if (!Array.isArray(raw)) return [];
+    // objets -> normalise; ids -> map vers allConcerts
+    if (raw.length && typeof raw[0] === "object") {
+      return raw.map(c => ({ ...c, dateFr: c.dateFr || formatDate(c.date) }));
     }
+    return raw.map(id => concertsById.get(String(id))).filter(Boolean);
+  }
 
-    // Formatage initial des concerts
-    const allConcerts = (window.concerts || []).map(c => {
-        const [y, m, d] = c.date.split("-");
-        return { ...c, dateFr: `${d}/${m}/${y}` };
-    });
-
-    let concerts = allConcerts.slice();
-    let currentMatches = [];
-    let currentIndex = -1;
-    let selectByMouse = false;
-
-    function formatDate(isoDate) {
-        const [year, month, day] = isoDate.split("-");
-        return `${day}/${month}/${year}`;
+  // --- Flatpickr sur la date générale (champ "Date") ---
+  if (dateField && typeof flatpickr === "function") {
+    if (!dateField._flatpickr) {
+      flatpickr(dateField, { dateFormat: "d/m/Y", locale: "fr", allowInput: true });
     }
+  }
 
-    // --- Filtres dynamiques (motif/musicien) ---
-	  function refreshConcertField() {
-		const motif = motifSelect.value;
-		const musicien = musicienSelect.value;
-
-		if (
-		  motifsQuiActivent.includes(motif) &&
-		  window.concertsParMusicien &&
-		  window.concertsParMusicien[musicien]
-		) {
-		  concerts = window.concertsParMusicien[musicien].map(c => ({
-			...c,
-			dateFr: formatDate(c.date)
-		  }));
-		} else {
-		  concerts = allConcerts.slice();
-		}
-
-		// ✅ guard flatpickr
-		if (concertDatePicker && concertDatePicker._flatpickr) {
-		  concertDatePicker._flatpickr.set('enable', concerts.map(c => c.date));
-		}
-
-		if (motifsQuiActivent.includes(motif)) {
-		  concertField.disabled = false;
-		  concertField.style.backgroundColor = "";
-		  calendarIcon.style.pointerEvents = "";
-		  calendarIcon.style.opacity = "";
-		} else {
-		  concertField.disabled = true;
-		  concertField.value = "";
-		  concertIdField.value = "";
-		  concertField.style.backgroundColor = "#e9e9e9";
-		  calendarIcon.style.pointerEvents = "none";
-		  calendarIcon.style.opacity = "0.4";
-		  concertAutocomplete.style.display = "none";
-		}
-	  }
-
-    // --- (Nouveau) Remplit la date générale dès sélection concert ---
-    function setDateFieldFromConcert(concert) {
-        if (!dateField) return;
-        // Format "JJ/MM/AAAA"
-        if (dateField._flatpickr) {
-            // Flatpickr attend ISO ou objet Date
-            dateField._flatpickr.setDate(concert.date, true, "Y-m-d");
-        } else {
-            dateField.value = formatDate(concert.date);
-        }
-    }
-
-    function fillConcert(concert) {
-        concertField.value = `${concert.dateFr} — ${concert.lieu}`;
-        concertIdField.value = concert.id;
-        concertField.dataset.locked = "true";
-        concertAutocomplete.style.display = "none";
-        // (Nouveau) Remplit la date générale
-        setDateFieldFromConcert(concert);
-    }
-
-    // --- Flatpickr sur input caché (concert lié) ---
+  // --- Flatpickr sur l’input caché "concert_date_picker" (pour n’ouvrir que les dates permises) ---
+  if (typeof flatpickr !== "function") {
+    console.error("flatpickr non chargé");
+    return;
+  }
+  if (!concertDatePicker._flatpickr) {
     flatpickr(concertDatePicker, {
-        dateFormat: "Y-m-d",
-        locale: flatpickr.l10ns.fr,
-        enable: concerts.map(c => c.date),
-        clickOpens: true,
-        allowInput: false,
-        onChange: function (selectedDates, dateStr) {
-            const concert = concerts.find(c => c.date === dateStr);
-            if (concert) fillConcert(concert);
-        }
+      dateFormat: "Y-m-d",
+      locale: flatpickr.l10ns.fr,
+      enable: [],              // ⚠️ on activera dynamiquement
+      clickOpens: true,
+      allowInput: false,
+      onChange(selectedDates, dateStr) {
+        const list = currentAllowed();
+        const hit = list.find(c => c.date === dateStr);
+        if (hit) fillConcert(hit);
+      }
     });
+  }
 
-    // Icône calendrier ouvre le Flatpickr (concert lié)
-    calendarIcon.addEventListener("click", function () {
-        concertDatePicker._flatpickr.open();
-    });
+  // Ouvre le calendrier via l’icône
+  if (calendarIcon) {
+    calendarIcon.addEventListener("click", () => concertDatePicker._flatpickr.open());
+  }
 
-    // --- Autocomplete maison ---
-    concertField.addEventListener("input", function () {
-        if (concertField.disabled) return;
-        if (concertField.dataset.locked === "true") return;
-        const value = concertField.value.trim().toLowerCase();
-        concertAutocomplete.innerHTML = "";
-        concertIdField.value = "";
-        concertField.dataset.locked = "";
-        if (value.length < 1) {
-            concertAutocomplete.style.display = "none";
-            return;
-        }
-        currentMatches = concerts.filter(c => {
-            const label = `${c.dateFr} — ${c.lieu}`.toLowerCase();
-            const words = label.split(/[\s—]+/);
-            return words.some(word => word.startsWith(value));
-        });
-        currentIndex = -1;
-        if (currentMatches.length === 0) {
-            concertAutocomplete.style.display = "none";
-            return;
-        }
-        currentMatches.forEach((c, i) => {
-            const item = document.createElement("div");
-            item.textContent = `${c.dateFr} — ${c.lieu}`;
-            item.className = "autocomplete-item";
-            item.tabIndex = -1;
-            item.addEventListener("mousedown", function (e) {
-                selectByMouse = true;
-                fillConcert(c); // Remplit aussi la date
-            });
-            item.addEventListener("mouseenter", function () {
-                currentIndex = i;
-                updateHighlight();
-            });
-            concertAutocomplete.appendChild(item);
-        });
-        concertAutocomplete.style.display = "block";
-    });
+  // État courant filtré (reconstruit via refresh)
+  let concerts = [];
 
-    function updateHighlight() {
-        const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
-        items.forEach((item, i) => {
-            item.style.background = (i === currentIndex) ? "#eef" : "white";
-        });
+  // --- remplace cette fonction dans initConcertAutocomplete ---
+  function currentAllowed() {
+    const motif = (motifSelect.value || "").trim();
+    if (!motifsQuiActivent.includes(motif)) return [];
+
+    const nameRaw = currentMusicienName();
+    const nameNorm = (nameRaw || "").trim().toLowerCase();
+
+    // ✅ Exception : si "CB ASSO7" + motif "Frais" -> autoriser TOUS les concerts
+    if (nameNorm === "cb asso7" && motif === "Frais") {
+      return allConcerts.slice().sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    concertField.addEventListener("keydown", function (e) {
-        const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
-        if (items.length === 0) return;
-        if (concertField.dataset.locked === "true" && !["Tab", "ArrowUp", "ArrowDown"].includes(e.key)) {
-            e.preventDefault();
-            return;
-        }
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            currentIndex = (currentIndex + 1) % items.length;
-            updateHighlight();
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            currentIndex = (currentIndex - 1 + items.length) % items.length;
-            updateHighlight();
-        } else if (e.key === "Tab" || e.key === "Enter") {
-            if (currentIndex >= 0) {
-                e.preventDefault();
-                fillConcert(currentMatches[currentIndex]);
-            }
-        } else if (e.key === "Escape") {
-            concertAutocomplete.style.display = "none";
-        }
-    });
+    // Cas normal : ne proposer QUE les concerts du musicien
+    return allowedConcertsFor(nameRaw).slice().sort((a, b) => a.date.localeCompare(b.date));
+  }
 
-    concertField.addEventListener("blur", function () {
-        setTimeout(() => {
-            if (concertIdField.value || selectByMouse) {
-                concertAutocomplete.style.display = "none";
-                selectByMouse = false;
-                return;
-            }
-            concertAutocomplete.style.display = "none";
-            concertField.value = "";
-            concertIdField.value = "";
-        }, 120);
-    });
 
-    concertField.addEventListener("focus", function () {
-        if (concertField.disabled) return;
-        if (concertField.dataset.locked !== "true" && concertField.value.trim()) {
-            concertField.dispatchEvent(new Event("input"));
-        }
-    });
-
-    if (musicienSelect) musicienSelect.addEventListener("change", refreshConcertField);
-    if (motifSelect) motifSelect.addEventListener("change", refreshConcertField);
-
-    refreshConcertField();
-
-    if (concertField.value.trim() && !concertIdField.value) {
-        const match = concerts.find(c => `${c.dateFr} — ${c.lieu}` === concertField.value.trim());
-        if (match) concertIdField.value = match.id;
+  function setDateFieldFromConcert(c) {
+    if (!dateField) return;
+    if (dateField._flatpickr) {
+      dateField._flatpickr.setDate(c.date, true, "Y-m-d"); // met JJ/MM/AAAA
+    } else {
+      dateField.value = formatDate(c.date);
     }
+  }
+
+  function fillConcert(c) {
+    concertField.value = `${c.dateFr || formatDate(c.date)} — ${c.lieu || ""}`.trim();
+    concertIdField.value = c.id;
+    concertField.dataset.locked = "true";
+    concertAutocomplete.style.display = "none";
+    setDateFieldFromConcert(c);
+  }
+
+  function refreshConcertField() {
+    concerts = currentAllowed();
+
+    // (1) restreindre le calendrier
+    concertDatePicker._flatpickr.set("enable", concerts.map(c => c.date));
+
+    // (2) activer/désactiver le champ en fonction du motif
+    const motif = (motifSelect.value || "").trim();
+    if (motifsQuiActivent.includes(motif)) {
+      concertField.disabled = false;
+      concertField.style.backgroundColor = "";
+      calendarIcon && (calendarIcon.style.pointerEvents = "", calendarIcon.style.opacity = "");
+    } else {
+      // reset si motif ne requiert pas un concert
+      concertField.disabled = true;
+      concertField.value = "";
+      concertIdField.value = "";
+      concertField.style.backgroundColor = "#e9e9e9";
+      concertAutocomplete.style.display = "none";
+      if (calendarIcon) { calendarIcon.style.pointerEvents = "none"; calendarIcon.style.opacity = "0.4"; }
+    }
+
+    // (3) si la valeur actuelle n’est plus autorisée, on vide
+    if (concertIdField.value && !concerts.some(c => String(c.id) === String(concertIdField.value))) {
+      concertIdField.value = "";
+      if (motifsQuiActivent.includes(motif)) concertField.value = ""; // on laisse l’utilisateur re-choisir
+    }
+  }
+
+  // Autocomplete “maison”
+  let currentMatches = [];
+  let currentIndex = -1;
+  let selectByMouse = false;
+
+  concertField.addEventListener("input", function () {
+    if (concertField.disabled) return;
+    if (concertField.dataset.locked === "true") return;
+
+    const value = concertField.value.trim().toLowerCase();
+    concertAutocomplete.innerHTML = "";
+    concertIdField.value = "";
+    concertField.dataset.locked = "";
+
+    if (value.length < 1) {
+      concertAutocomplete.style.display = "none";
+      return;
+    }
+
+    // on filtre UNIQUEMENT dans les concerts autorisés
+    currentMatches = concerts.filter(c => {
+      const label = `${c.dateFr || formatDate(c.date)} — ${c.lieu || ""}`.toLowerCase();
+      const words = label.split(/[\s—]+/);
+      return words.some(w => w.startsWith(value));
+    });
+    currentIndex = -1;
+    if (!currentMatches.length) {
+      concertAutocomplete.style.display = "none";
+      return;
+    }
+    currentMatches.forEach((c, i) => {
+      const item = document.createElement("div");
+      item.textContent = `${c.dateFr || formatDate(c.date)} — ${c.lieu || ""}`.trim();
+      item.className = "autocomplete-item";
+      item.tabIndex = -1;
+      item.addEventListener("mousedown", () => { selectByMouse = true; fillConcert(c); });
+      item.addEventListener("mouseenter", () => { currentIndex = i; updateHighlight(); });
+      concertAutocomplete.appendChild(item);
+    });
+    concertAutocomplete.style.display = "block";
+  });
+
+  function updateHighlight() {
+    const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+    items.forEach((el, i) => { el.style.background = (i === currentIndex) ? "#eef" : "white"; });
+  }
+
+  concertField.addEventListener("keydown", function (e) {
+    const items = concertAutocomplete.querySelectorAll(".autocomplete-item");
+    if (!items.length) return;
+
+    if (concertField.dataset.locked === "true" && !["Tab","ArrowUp","ArrowDown"].includes(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault(); currentIndex = (currentIndex + 1) % items.length; updateHighlight();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault(); currentIndex = (currentIndex - 1 + items.length) % items.length; updateHighlight();
+    } else if (e.key === "Tab" || e.key === "Enter") {
+      if (currentIndex >= 0) { e.preventDefault(); fillConcert(currentMatches[currentIndex]); }
+    } else if (e.key === "Escape") {
+      concertAutocomplete.style.display = "none";
+    }
+  });
+
+  concertField.addEventListener("blur", function () {
+    setTimeout(() => {
+      if (concertIdField.value || selectByMouse) {
+        concertAutocomplete.style.display = "none";
+        selectByMouse = false;
+        return;
+      }
+      concertAutocomplete.style.display = "none";
+      concertField.value = "";
+      concertIdField.value = "";
+    }, 120);
+  });
+
+  concertField.addEventListener("focus", function () {
+    if (concertField.disabled) return;
+    if (concertField.dataset.locked !== "true" && concertField.value.trim()) {
+      concertField.dispatchEvent(new Event("input"));
+    }
+  });
+
+  // Refiltrage quand le bénéficiaire OU le motif change
+  if (musicienInput && musicienInput.tagName === "SELECT") {
+    musicienInput.addEventListener("change", refreshConcertField);
+  }
+  // (mode édition = input hidden) : pas d’event nécessaire, la valeur ne change pas.
+  motifSelect.addEventListener("change", refreshConcertField);
+
+  // Init
+  refreshConcertField();
+
+  // Si un label est déjà présent (pré-remplissage) mais l’ID est vide, tente de le retrouver
+  if (concertField.value.trim() && !concertIdField.value) {
+    const match = allConcerts.find(c => `${c.dateFr} — ${c.lieu}`.trim() === concertField.value.trim());
+    if (match) concertIdField.value = match.id;
+  }
 }
-
 
 
 

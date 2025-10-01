@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: malo-comptes
+    env: python
+    region: frankfurt
+    plan: free
+    autoDeploy: true
+    buildCommand: "pip install --upgrade pip && pip install -r requirements-prod.txt"
+    startCommand: "gunicorn -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT App:app"
+    healthCheckPath: /healthz          # ✅ route légère (pas de DB)
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: TZ                        # ✅ fuseau pour éviter les décalages
+        value: Europe/Paris
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
