@@ -7,6 +7,7 @@ import io
 from datetime import date, datetime
 from collections import OrderedDict, defaultdict
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 # 🌐 Flask & extensions
 from flask import Flask, render_template, request, redirect, url_for, flash, current_app, jsonify, Response, send_file
@@ -23,6 +24,8 @@ print("format_currency importé depuis mes_utils :", format_currency)
 
 # Chargement des variables d’environnement
 load_dotenv("env.txt")
+
+PARIS = ZoneInfo("Europe/Paris")
 
 # ─────────────────────────────
 # Création de l'application
@@ -164,6 +167,15 @@ def accueil():
 def healthz():
     return "ok", 200
 
+
+
+def today_paris():
+    """Renvoie la date du jour en Europe/Paris.
+    Fallback sur date.today() si jamais ZoneInfo ne marche pas (très rare)."""
+    try:
+        return datetime.now(PARIS).date()
+    except Exception:
+        return date.today()
 
 # ---------- ROUTES CRUD MUSICIEN ----------
 
