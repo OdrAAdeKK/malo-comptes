@@ -356,9 +356,13 @@
 				{% endfor %}
 			  {% else %}
 				{# Mode CRÉATION : liste par défaut #}
-				<option value="Frais"
-				  {% if (operation and operation.motif == "Frais") or (not operation) %}selected{% endif %}>
-				  Frais
+				<option value="Frais de concerts"
+				  {% if (operation and operation.motif == "Frais de concerts") or (not operation) %}selected{% endif %}>
+				  Frais de concerts
+				</option>
+				<option value="Frais divers"
+				  {% if (operation and operation.motif == "Frais divers" %}selected{% endif %}>
+				  Frais divers
 				</option>
 				<option value="Salaire" {% if operation and operation.motif == "Salaire" %}selected{% endif %}>
 				  Salaire

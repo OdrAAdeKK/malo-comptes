@@ -1592,28 +1592,35 @@ def operations():
                 except Exception:
                     pass
 
-            # concert obligatoire
+            # concert optionnel
             cid_raw = data.get("concert_id")
             try:
                 cid = int(str(cid_raw).strip()) if cid_raw else None
             except Exception:
                 cid = None
 
-            if not cid:
-                flash("Choisis un concert pour un remboursement de frais divers.", "warning")
-                return redirect(url_for('operations'))
-
-            concert = Concert.query.get(cid)
-            if not concert:
-                flash("Concert introuvable pour l'opération.", "danger")
-                return redirect(url_for('operations'))
-
-            # Date : si vide -> date du concert
-            if not (data.get("date") and str(data["date"]).strip()):
-                data["date"] = concert.date.isoformat()
+            if cid:
+                concert = Concert.query.get(cid)
+                if not concert:
+                    flash("Concert introuvable pour l'opération.", "danger")
+                    return redirect(url_for('operations'))
+                # Si date vide → date du concert
+                if not (data.get("date") and str(data["date"]).strip()):
+                    data["date"] = concert.date.isoformat()
+            # Sinon : pas de concert → on garde la date fournie (préremplie à aujourd’hui côté formulaire)
 
             # Pas de brut pour ce motif
             data.pop("brut", None)
+
+        # --- Règle spéciale : "Frais divers" (musicien, hors-concert) ---
+        if is_musicien and motif_norm == "frais divers":
+            data["type"] = "debit"
+            data.setdefault("nature", "frais")
+            # aucun concert
+            data["concert_id"] = ""
+            # pas de brut
+            data.pop("brut", None)
+
 
         print("DATA POST (après normalisation):", data)
         enregistrer_operation_en_db(data)
@@ -1780,17 +1787,26 @@ def modifier_operation(id):
             except Exception:
                 cid = None
 
-            if not cid:
-                flash("Choisis un concert pour un remboursement de frais divers.", "warning")
-                return redirect(url_for('modifier_operation', id=id))
-
-            # Si date vide → date du concert
-            if not (data.get("date") and str(data["date"]).strip()):
+            if cid:
                 c = Concert.query.get(cid)
-                if c:
+                if not c:
+                    flash("Concert introuvable pour l'opération.", "danger")
+                    return redirect(url_for('modifier_operation', id=id))
+                # Si date vide → date du concert
+                if not (data.get("date") and str(data["date"]).strip()):
                     data["date"] = c.date.isoformat()
+            # Sinon : pas de concert → on garde la date fournie (préremplie côté formulaire)
 
             data.pop("brut", None)  # non pertinent ici
+
+        # --- Règle spéciale : "Frais divers" (musicien, hors-concert) ---
+        if is_musicien and motif_norm == "frais divers":
+            data["type"] = "debit"
+            data.setdefault("nature", "frais")
+            # aucun concert
+            data["concert_id"] = ""
+            # pas de brut
+            data.pop("brut", None)
 
         # 3) Mise à jour en base
         modifier_operation_en_db(id, data)

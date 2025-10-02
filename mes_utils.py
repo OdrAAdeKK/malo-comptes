@@ -1260,11 +1260,17 @@ def enregistrer_operation_en_db(data):
     # 🎯 Déduction automatique du type selon le motif (garde ta logique existante)
     cible_nom_normalise = (cible.nom or "").strip().lower()
     concert_id = _to_int_or_none(data.get("concert_id"))  # <- *** fix: '' devient None ***
-    if motif == "Frais":
+    if motif == "Frais de concerts": 
+        # même règle qu'avant : CB/CAISSE => débit, sinon crédit
         type_op = "debit" if cible_nom_normalise in ["cb asso7", "caisse asso7"] else "credit"
+    elif motif == "Frais divers":
+        # hors concert => toujours débit
+        type_op = "debit"
     elif motif == "Recette concert":
         type_op = "credit"
     elif motif == "Salaire":
+        type_op = "debit"
+    elif motif == "Remboursement frais divers":
         type_op = "debit"
 
     # Montants sécurisés (gère virgules)
@@ -1344,35 +1350,11 @@ def enregistrer_operation_en_db(data):
             db.session.add(op_treso)
 
 
-    # 🔄 Débit automatique sur CB ASSO7 ou CAISSE ASSO7 si Salaire
-    if is_salaire and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
-        mode = (data.get("mode") or "Compte").strip()
-        cible_debit = None
-        if mode.lower() == "compte":
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "cb asso7"), None)
-        elif mode.lower() in ("especes", "espèces"):
-            cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
+    # 🔄 Débit automatique sur CB ASSO7 / CAISSE ASSO7 pour Salaire / Remboursement frais divers / Frais divers
+    is_remb_frais  = (str(motif or "").strip().lower() == "remboursement frais divers")
+    is_frais_divers = (str(motif or "").strip().lower() == "frais divers")
 
-        if cible_debit:
-            db.session.flush()
-            debit_salaire = Operation(
-                musicien_id=cible_debit.id,
-                type="debit",
-                motif=f"Débit Salaire {data.get('musicien')}",
-                precision=f"Salaire payé à {data.get('musicien')}",
-                montant=float(montant),
-                date=date_op,
-                operation_liee_id=op.id,
-                auto_debit_salaire=True
-            )
-            db.session.add(debit_salaire)
-
-            # 🛠️ Lien vers op principal, mais PAS de réajout
-            op.operation_liee_id = debit_salaire.id
-
-    # 🔄 Débit automatique sur CB ASSO7 / CAISSE ASSO7 aussi pour "Remboursement frais divers"
-    is_remb_frais = (str(motif or "").strip().lower() == "remboursement frais divers")
-    if (is_salaire or is_remb_frais) and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
+    if (is_salaire or is_remb_frais or is_frais_divers) and cible_nom_normalise not in ["cb asso7", "caisse asso7"]:
         mode_val = (data.get("mode") or "Compte").strip().lower()
         cible_debit = None
         if mode_val == "compte":
@@ -1381,8 +1363,14 @@ def enregistrer_operation_en_db(data):
             cible_debit = next((m for m in musiciens if (m.nom or "").strip().lower() == "caisse asso7"), None)
 
         if cible_debit:
-            db.session.flush()
-            lib = "Salaire" if is_salaire else "Remboursement frais"
+            db.session.flush()  # garantir op.id
+            if is_salaire:
+                lib = "Salaire"
+            elif is_remb_frais:
+                lib = "Remboursement frais"
+            else:
+                lib = "Frais divers"
+
             debit_auto = Operation(
                 musicien_id=cible_debit.id,
                 type="debit",
@@ -1390,7 +1378,8 @@ def enregistrer_operation_en_db(data):
                 precision=f"{lib} payé à {data.get('musicien') or (cible.prenom + ' ' + (cible.nom or ''))}".strip(),
                 montant=float(montant),
                 date=date_op,
-                operation_liee_id=op.id
+                operation_liee_id=op.id,
+                auto_debit_salaire=bool(is_salaire)   # flag uniquement pour Salaire
             )
             db.session.add(debit_auto)
             # on lie aussi l'op principale au débit auto
@@ -1398,8 +1387,8 @@ def enregistrer_operation_en_db(data):
             db.session.add(op)
 
 
-    # 🧾 Mise à jour frais sur concert si motif = Frais
-    if (motif or "").lower() == "frais" and concert_id:
+    # 🧾 Mise à jour frais sur concert si motif = "Frais de concerts"
+    if (motif or "").lower() == "frais de concerts" and concert_id:
         try:
             concert = Concert.query.get(concert_id)
             if concert:
@@ -1903,7 +1892,8 @@ def modifier_operation_en_db(operation_id, form_data):
                 precision=f"{lib} payé à {data.get('musicien') or (cible.prenom + ' ' + (cible.nom or ''))}".strip(),
                 montant=float(montant_val),
                 date=date_op,
-                operation_liee_id=op.id
+                operation_liee_id=op.id,
+                auto_debit_salaire=bool(is_salaire)
             )
             db.session.add(debit_auto)
             op.operation_liee_id = debit_auto.id
