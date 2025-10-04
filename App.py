@@ -1769,6 +1769,7 @@ def modifier_operation(id):
         # “musicien” est un libellé ("Prénom Nom" ou une structure)
         qui_raw = (data.get("musicien") or "").strip()
         is_structure = qui_raw in ("ASSO7", "CB ASSO7", "CAISSE ASSO7", "TRESO ASSO7")
+        is_musicien = not is_structure
 
         # — Remboursement frais divers (toujours DEBIT, concert requis, brut ignoré) —
         if (not is_structure) and motif_norm == "remboursement frais divers":

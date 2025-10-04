@@ -356,12 +356,10 @@
 				{% endfor %}
 			  {% else %}
 				{# Mode CRÉATION : liste par défaut #}
-				<option value="Frais de concerts"
-				  {% if (operation and operation.motif == "Frais de concerts") or (not operation) %}selected{% endif %}>
+				<option value="Frais de concerts" {{ 'selected' if (operation and operation.motif == 'Frais de concerts') or (not operation) else '' }}>
 				  Frais de concerts
 				</option>
-				<option value="Frais divers"
-				  {% if (operation and operation.motif == "Frais divers" %}selected{% endif %}>
+				<option value="Frais divers" {{ 'selected' if (operation and operation.motif == 'Frais divers') else '' }}>
 				  Frais divers
 				</option>
 				<option value="Salaire" {% if operation and operation.motif == "Salaire" %}selected{% endif %}>
@@ -457,9 +455,10 @@
 document.addEventListener('DOMContentLoaded', () => {
   const selMotif = document.getElementById('motif');
   // En création (pas d'operation), on force "Frais"
-  {% if not operation %}
-    if (selMotif) selMotif.value = 'Frais';
-  {% endif %}
+	{% if not operation %}
+	  if (selMotif) selMotif.value = 'Frais de concerts';
+	{% endif %}
+
   if (selMotif) selMotif.dispatchEvent(new Event('change'));
 
   // Si la route a fourni un concert à pré-remplir, on “bétonne” le champ
