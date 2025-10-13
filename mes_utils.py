@@ -476,7 +476,7 @@ def collecter_frais_par_musicien(concerts):
         .with_entities(Operation.concert_id, Operation.musicien_id, signed_sum.label("total"))
         .filter(
             Operation.concert_id.in_(concert_ids),
-            func.lower(Operation.motif) == "frais",
+            db.func.lower(db.func.coalesce(Operation.motif, "" )).in_(["frais", "frais de concerts"]),
             Operation.previsionnel.is_(False)
         )
         .group_by(Operation.concert_id, Operation.musicien_id)
@@ -727,10 +727,10 @@ def recalculer_frais_concert(concert_id: int, op_to_remove_id: int | None = None
     # 2) Construction de la requête: Frais réels uniquement (prévisionnels exclus)
     q = db.session.query(db.func.coalesce(db.func.sum(Operation.montant), 0.0)).filter(
         Operation.concert_id == concert_id,
-        Operation.motif == "Frais",
-        # On prend les opérations où previsionnel est False OU NULL (compat anciens enregistrements)
+        db.func.lower(db.func.coalesce(Operation.motif, "" )).in_(["frais", "frais de concerts"]),
         db.or_(Operation.previsionnel.is_(False), Operation.previsionnel.is_(None))
     )
+
 
     # 3) Si on connaît l'ID d'une op à retirer (appel avant suppression), on l'exclut de la somme
     if op_to_remove_id:
@@ -1387,8 +1387,8 @@ def enregistrer_operation_en_db(data):
             db.session.add(op)
 
 
-    # 🧾 Mise à jour frais sur concert si motif = "Frais de concerts"
-    if (motif or "").lower() == "frais de concerts" and concert_id:
+    # 🧾 Mise à jour frais sur concert si motif = "Frais" OU "Frais de concerts"
+    if (motif or "").strip().lower() in {"frais", "frais de concerts"} and concert_id:
         try:
             concert = Concert.query.get(concert_id)
             if concert:
@@ -1548,7 +1548,7 @@ def annuler_operation(id):
         db.session.delete(op_liee)
 
     # Si frais, déduire du concert
-    if operation.motif.lower() == "frais" and concert_id:
+    if (operation.motif or "").strip().lower() in {"frais", "frais de concerts"} and concert_id:
         concert = Concert.query.get(concert_id)
         if concert and concert.frais:
             concert.frais = max(0.0, concert.frais - (operation.montant or 0.0))
@@ -1900,7 +1900,7 @@ def modifier_operation_en_db(operation_id, form_data):
             db.session.add(op)
 
     # 🎫 FRAIS DE CONCERT
-    if (motif or "").lower() == "frais" and concert_id:
+    if (motif or "").strip().lower() in {"frais", "frais de concerts"} and concert_id:
         try:
             concert = Concert.query.get(concert_id)
             if concert:

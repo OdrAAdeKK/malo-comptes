@@ -277,10 +277,12 @@ function initConcertAutocomplete() {
     const nameRaw = currentMusicienName();
     const nameNorm = (nameRaw || "").trim().toLowerCase();
 
-    // ✅ Exception : si "CB ASSO7" + motif "Frais" -> autoriser TOUS les concerts
-    if (nameNorm === "cb asso7" && motif === "Frais") {
-      return allConcerts.slice().sort((a, b) => a.date.localeCompare(b.date));
-    }
+
+	// ✅ Exception : CB/CAISSE + "Frais de concerts" → autoriser TOUS les concerts
+	if ((nameNorm === "cb asso7" || nameNorm === "caisse asso7") && motif === "Frais de concerts") {
+	  return allConcerts.slice().sort((a, b) => a.date.localeCompare(b.date));
+	}
+
 
     // Cas normal : ne proposer QUE les concerts du musicien
     return allowedConcertsFor(nameRaw).slice().sort((a, b) => a.date.localeCompare(b.date));
