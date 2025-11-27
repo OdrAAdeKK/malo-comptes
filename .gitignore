@@ -5,14 +5,12 @@ __pycache__/
 *.pyd
 .venv/
 venv/
-env/
+
 *.sqlite3
 
 # Flask / instances & secrets
 instance/
-.env
-.env.*
-env.txt          # Contient les variables d'environnement
+      # Contient les variables d'environnement
 test_db.py       # Script local uniquement
 
 # OS / IDE
@@ -29,3 +27,12 @@ logs_mails/
 *.pdf
 *.dump
 log_*.txt
+
+
+# secrets / env
+.env
+.env.*
+*.env
+*.env.*
+env
+env.txt
