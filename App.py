@@ -1,4 +1,4 @@
-import os
+import os, requests
 import json
 import locale
 import sqlite3
@@ -83,7 +83,7 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
 # Mail
 # ─────────────────────────────
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))          # défaut 587 (submission)
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 2525))          # défaut 2525 (submission)
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'  # défaut TLS ON
 app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'False') == 'True' # optionnel si 465
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
@@ -2098,104 +2098,116 @@ def preview_mail_cachets():
     )
     
 
+def _default_sender():
+    # ordre de priorité: ENV > Flask config MAIL_DEFAULT_SENDER > MAIL_USERNAME
+    return (
+        os.environ.get("MAIL_DEFAULT_SENDER")
+        or current_app.config.get("MAIL_DEFAULT_SENDER")
+        or current_app.config.get("MAIL_USERNAME")
+    )
+
+def send_transactional_email(subject: str, html: str, to_list=None, cc_list=None):
+    """
+    Envoi un email via API si configuré, sinon fallback SMTP (Flask-Mail).
+    Providers supportés : MAILGUN (API HTTP) ou SENDGRID (API HTTP).
+    Variables d'env attendues :
+      - MAIL_PROVIDER = mailgun | sendgrid | (vide -> fallback SMTP)
+      - MAIL_DEFAULT_SENDER (optionnel)
+      - MAILGUN_DOMAIN, MAILGUN_API_KEY (si MAIL_PROVIDER=mailgun)
+      - SENDGRID_API_KEY       (si MAIL_PROVIDER=sendgrid)
+    """
+    to_list = to_list or []
+    cc_list = cc_list or []
+    provider = (os.environ.get("MAIL_PROVIDER") or "").strip().lower()
+    sender = _default_sender()
+
+    if not sender:
+        raise RuntimeError("Aucun expéditeur configuré (MAIL_DEFAULT_SENDER ou MAIL_USERNAME).")
+
+    # --- Mailgun API ---
+    if provider == "mailgun":
+        domain = os.environ.get("MAILGUN_DOMAIN")
+        api_key = os.environ.get("MAILGUN_API_KEY")
+        if not domain or not api_key:
+            raise RuntimeError("MAILGUN configuré mais MAILGUN_DOMAIN ou MAILGUN_API_KEY manquant.")
+
+        resp = requests.post(
+            f"https://api.mailgun.net/v3/{domain}/messages",
+            auth=("api", api_key),
+            data={
+                "from": sender,
+                "to": to_list,
+                "cc": cc_list,
+                "subject": subject,
+                "html": html,
+            },
+            timeout=15,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"Mailgun a répondu {resp.status_code}: {resp.text[:300]}")
+        return "mailgun"
+
+    # --- SendGrid API ---
+    if provider == "sendgrid":
+        sg_key = os.environ.get("SENDGRID_API_KEY")
+        if not sg_key:
+            raise RuntimeError("SENDGRID configuré mais SENDGRID_API_KEY manquant.")
+        try:
+            from sendgrid import SendGridAPIClient
+            from sendgrid.helpers.mail import Mail, Email, To, Cc
+        except Exception as e:
+            raise RuntimeError("Librairie sendgrid non installée (pip install sendgrid).") from e
+
+        mail = Mail(
+            from_email=Email(sender),
+            subject=subject,
+            html_content=html,
+        )
+        mail.to = [To(addr) for addr in to_list]
+        if cc_list:
+            mail.cc = [Cc(addr) for addr in cc_list]
+
+        sg = SendGridAPIClient(sg_key)
+        resp = sg.send(mail)
+        if resp.status_code >= 300:
+            body = getattr(resp, "body", b"") or b""
+            raise RuntimeError(f"SendGrid a répondu {resp.status_code}: {body[:300]}")
+        return "sendgrid"
+
+    # --- Fallback SMTP (Flask-Mail) pour le local uniquement ---
+    # ⚠ Sur Render, ce fallback sera presque toujours en timeout (SMTP bloqué).
+    from flask_mail import Message
+    msg = Message(
+        subject=subject,
+        sender=sender,
+        recipients=to_list,
+        cc=cc_list,
+        html=html
+    )
+    mail.send(msg)
+    return "smtp"
+
+
 @app.route('/envoyer_mail_cachets', methods=['POST'])
 def envoyer_mail_cachets():
-    from flask import current_app, request, redirect, url_for, flash
-    from flask_mail import Message
-    import traceback, smtplib, socket
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
+    titre = request.form.get("titre")
+    message_html = request.form.get("message_html")
 
-    def _mask(s):
-        if not s: return ""
-        s = str(s)
-        if "@" in s:
-            name, dom = s.split("@", 1)
-            return (name[:2] + "…" + name[-1:] + "@" + dom)
-        return s[:2] + "…"
-
-    def _smtp_send_direct(subject: str, html: str):
-        """Fallback SMTP brut avec timeout et STARTTLS/SSL selon config."""
-        cfg = current_app.config
-        server   = cfg.get("MAIL_SERVER")
-        port     = int(cfg.get("MAIL_PORT") or 0) or 587
-        username = cfg.get("MAIL_USERNAME")
-        password = cfg.get("MAIL_PASSWORD")
-        use_tls  = bool(cfg.get("MAIL_USE_TLS"))
-        use_ssl  = bool(cfg.get("MAIL_USE_SSL"))
-        sender   = cfg.get("MAIL_DEFAULT_SENDER") or username
-        recipients = ["lionel@odradek78.fr"]
-        cc = ["jeromemalo1@gmail.com"]
-        to_all = recipients + cc
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = sender
-        msg["To"] = ", ".join(recipients)
-        msg["Cc"] = ", ".join(cc)
-        msg.attach(MIMEText(html, "html", "utf-8"))
-
-        timeout = float(cfg.get("MAIL_TIMEOUT", 15))
-
-        if use_ssl or port == 465:
-            smtp = smtplib.SMTP_SSL(server, port, timeout=timeout)
-        else:
-            smtp = smtplib.SMTP(server, port, timeout=timeout)
-            smtp.ehlo()
-            if use_tls or port in (587, 25):
-                smtp.starttls()
-                smtp.ehlo()
-
-        if username:
-            smtp.login(username, password)
-        smtp.sendmail(sender, to_all, msg.as_string())
-        smtp.quit()
-
-    titre = (request.form.get("titre") or "").strip()
-    message_html = request.form.get("message_html") or ""
     if not titre or not message_html:
         flash("Erreur : message non transmis depuis la preview.", "danger")
         return redirect(url_for('cachets_a_venir'))
 
-    # expéditeur : si MAIL_DEFAULT_SENDER est absent, on retombe sur MAIL_USERNAME
-    sender = (current_app.config.get('MAIL_DEFAULT_SENDER')
-              or current_app.config.get('MAIL_USERNAME'))
+    to_list = ["lionel@odradek78.fr"]
+    cc_list = ["jeromemalo1@gmail.com"]
 
-    # 1) essai via Flask-Mail
     try:
-        msg = Message(
-            subject=titre,
-            sender=sender,
-            recipients=["lionel@odradek78.fr"],
-            cc=["jeromemalo1@gmail.com"],
-            html=message_html
-        )
-        mail.send(msg)
-        log_mail_envoye(titre, message_html)
-        flash("✅ Mail envoyé avec succès à Lionel.", "success")
-        return redirect(url_for('cachets_a_venir'))
-
-    except Exception as e1:
-        # Log détaillé côté serveur + config masquée
-        cfg = current_app.config
-        current_app.logger.error(
-            "Flask-Mail a échoué: %r | SMTP=%s:%s TLS=%s SSL=%s user=%s",
-            e1,
-            cfg.get("MAIL_SERVER"), cfg.get("MAIL_PORT"),
-            cfg.get("MAIL_USE_TLS"), cfg.get("MAIL_USE_SSL"),
-            _mask(cfg.get("MAIL_USERNAME")),
-        )
-        current_app.logger.error("Traceback:\n%s", traceback.format_exc())
-
-        # 2) fallback SMTP brut
-        try:
-            _smtp_send_direct(titre, message_html)
-            log_mail_envoye(titre, message_html)
-            flash("✅ Mail envoyé (mode secours SMTP).", "success")
-        except (socket.timeout, smtplib.SMTPException, OSError) as e2:
-            # On affiche l’erreur (utile en prod) et on logge complet côté serveur
-            current_app.logger.error("Fallback SMTP KO: %r", e2)
-            flash(f"❌ Envoi impossible : {type(e2).__name__} — {e2}", "error")
+        used = send_transactional_email(titre, message_html, to_list=to_list, cc_list=cc_list)
+        flash(f"✅ Mail envoyé ({used})", "success")
+    except Exception as e:
+        # Log serveur détaillé
+        current_app.logger.exception("Echec envoi mail cachets")
+        # Message utilisateur bref
+        flash(f"❌ Envoi impossible : {e}", "error")
 
     return redirect(url_for('cachets_a_venir'))
 
