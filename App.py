@@ -83,11 +83,12 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
 # Mail
 # ─────────────────────────────
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER')
-app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))
-app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'False') == 'True'
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))          # défaut 587 (submission)
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True') == 'True'  # défaut TLS ON
+app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'False') == 'True' # optionnel si 465
 app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
-app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER') or os.getenv('MAIL_USERNAME')
 
 # ─────────────────────────────
 # DB / Migrations / Mail init
@@ -2097,35 +2098,48 @@ def preview_mail_cachets():
     )
     
 
-
-
-
 @app.route('/envoyer_mail_cachets', methods=['POST'])
 def envoyer_mail_cachets():
     titre = request.form.get("titre")
     message_html = request.form.get("message_html")
+
     print(f"Titre reçu : {titre}")
     print(f"HTML reçu (début) : {str(message_html)[:100]}...")
+
     if not titre or not message_html:
-        print("Pas de titre ou de message_html reçu ! Fallback.")
+        print("Pas de titre ou de message_html reçu ! Fallback.")
         flash("Erreur : message non transmis depuis la preview.", "danger")
         return redirect(url_for('cachets_a_venir'))
-    else:
-        try:
-            msg = Message(
-                subject=titre,
-                sender=current_app.config['MAIL_USERNAME'],
-                recipients=["lionel@odradek78.fr"],
-                cc=["jeromemalo1@gmail.com"],
-                html=message_html
+
+    try:
+        # ✅ Expéditeur robuste : DEFAULT_SENDER sinon USERNAME
+        sender = (
+            current_app.config.get('MAIL_DEFAULT_SENDER')
+            or current_app.config.get('MAIL_USERNAME')
+        )
+        if not sender:
+            raise RuntimeError(
+                "MAIL_DEFAULT_SENDER/MAIL_USERNAME non configuré — impossible d'envoyer le mail."
             )
-            mail.send(msg)
-            log_mail_envoye(titre, message_html)
-            print("Après mail.send() — on va flasher success")
-            flash("✅ Mail envoyé avec succès à Lionel", "success")
-        except Exception as e:
-            print(f"❌ Erreur lors de l'envoi du mail : {e}")
-            flash("❌ Une erreur est survenue lors de l'envoi du mail.", "error")
+
+        msg = Message(
+            subject=titre,
+            sender=sender,  # ← au lieu de MAIL_USERNAME en dur
+            recipients=["lionel@odradek78.fr"],
+            cc=["jeromemalo1@gmail.com"],
+            html=message_html
+        )
+
+        mail.send(msg)
+        log_mail_envoye(titre, message_html)
+        print("Après mail.send() — on va flasher success")
+        flash("✅ Mail envoyé avec succès à Lionel", "success")
+
+    except Exception as e:
+        import traceback
+        print(f"❌ Erreur lors de l'envoi du mail : {e!r}")
+        traceback.print_exc()
+        flash("❌ Une erreur est survenue lors de l'envoi du mail.", "error")
 
     return redirect(url_for('cachets_a_venir'))
 
