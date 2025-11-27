@@ -18,12 +18,15 @@ document.addEventListener("DOMContentLoaded", function () {
             const display = selectedDates.map(d => d.toLocaleDateString("fr-FR")).join(",\n");
             document.getElementById("dates_display").value = display;
 
-            // Valeur brute (envoyée au serveur)
-            const hidden = selectedDates.map(d => {
-			  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-			  return local.toISOString().split('T')[0];
+			// Valeur brute (envoyée au serveur) — format YYYY-MM-DD sans UTC
+			const hidden = selectedDates.map(d => {
+			  const y = d.getFullYear();
+			  const m = String(d.getMonth() + 1).padStart(2, "0");
+			  const day = String(d.getDate()).padStart(2, "0");
+			  return `${y}-${m}-${day}`;
 			}).join(",");
-            document.getElementById("dates_hidden").value = hidden;
+			document.getElementById("dates_hidden").value = hidden;
+
         }
     });
 
