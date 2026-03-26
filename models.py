@@ -99,7 +99,7 @@ class Participation(db.Model):
     concert_id = db.Column(db.Integer, db.ForeignKey('concerts.id'), nullable=False)
     musicien_id = db.Column(db.Integer, db.ForeignKey('musiciens.id', ondelete="CASCADE"), nullable=False)
     paye = db.Column(db.Boolean, default=False)
-    credit_calcule = db.Column(db.Float, nullable=True)
+    credit_calcule = db.Column(db.Float, default=0.0, nullable=True)
     credit_calcule_potentiel = db.Column(db.Float, default=0.0)
     musicien = db.relationship('Musicien', backref=db.backref('participations', lazy=True))
     gain_fixe = db.Column(db.Numeric(10, 2), nullable=True)  # None = non fixé, sinon montant absolu

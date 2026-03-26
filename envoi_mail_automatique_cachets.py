@@ -1,31 +1,19 @@
-from App import app, mail  # 🔁 on importe l'app Flask déjà configurée
+from App import app, mail
 from flask_mail import Message
-from mes_utils import get_cachets_par_mois, log_mail_envoye
-from datetime import datetime, date
+from mes_utils import get_cachets_par_mois, formater_cachets_html, mois_nom_fr, log_mail_envoye
+from datetime import date
 import calendar
 
-with app.app_context():  # 📦 indispensable pour l'accès aux extensions Flask
+with app.app_context():
     today = date.today()
     if today.day != calendar.monthrange(today.year, today.month)[1]:
-        print("🟡 Ce n’est pas le dernier jour du mois. Aucun envoi.")
+        print("🟡 Ce n'est pas le dernier jour du mois. Aucun envoi.")
     else:
         mois_suivant = (today.month % 12) + 1
         annee_suivante = today.year + 1 if mois_suivant == 1 else today.year
         cachets = get_cachets_par_mois(mois_suivant, annee_suivante)
 
-        def formater_cachets_html(cachets):
-            musiciens = {}
-            for c in sorted(cachets, key=lambda x: (c.musicien.nom, c.date)):
-                nom = f"{c.musicien.prenom} {c.musicien.nom}"
-                musiciens.setdefault(nom, []).append(
-                    f"{c.date.strftime('%d/%m/%Y')} – {c.montant:.2f} €"
-                )
-            return "\n".join([
-                f"<p style='margin-left: 20px;'><strong>{nom}</strong><br>" + "<br>".join(lignes) + "</p>"
-                for nom, lignes in musiciens.items()
-            ])
-
-        mois_nom = calendar.month_name[mois_suivant].capitalize()
+        mois_nom = mois_nom_fr(mois_suivant, capitalize=True)
         titre = f"Dates MALO à déclarer pour {mois_nom} {annee_suivante}"
         message_html = f"""
         <p>Salut Lionel,</p>

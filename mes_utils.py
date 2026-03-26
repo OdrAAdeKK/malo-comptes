@@ -115,6 +115,21 @@ def grouper_par_mois(items, date_attr: str, *, descending: bool = True):
 
 
 
+def formater_cachets_html(cachets):
+    """Formate une liste de cachets en HTML groupé par musicien, trié par nom puis date."""
+    musiciens = {}
+    for c in sorted(cachets, key=lambda x: (x.musicien.nom, x.date)):
+        nom_complet = f"{c.musicien.prenom} {c.musicien.nom}"
+        musiciens.setdefault(nom_complet, []).append(
+            f"{c.date.strftime('%d/%m/%Y')} – {c.montant:.2f} €"
+        )
+    blocs = []
+    for nom, lignes in musiciens.items():
+        bloc = f"<p style='margin-left: 20px;'><strong>{nom}</strong><br>" + "<br>".join(lignes) + "</p>"
+        blocs.append(bloc)
+    return "\n".join(blocs)
+
+
 def regrouper_cachets_par_mois(cachets, *, ordre_scolaire: bool = True):
     """
     Retourne une liste : [
@@ -421,20 +436,14 @@ def calculer_gains_a_venir(musicien, concerts):
     credit = 0.0
     nom = (musicien.nom or "").strip().upper()
 
-    # Cas spécial : CB/CAISSE ASSO7 (on garde ta logique actuelle)
-    if nom in ["CB ASSO7", "CAISSE ASSO7"]:
-        # ... (inchangé)
-        # (ta logique spéciale CB/CAISSE ici)
-        return credit
-
-    # ✅ NOUVEAU : pour les concerts NON payés, on lit Participation.credit_calcule_potentiel
+    # Pour les concerts non payés, on lit Participation.credit_calcule_potentiel
     for concert in concerts:
         if not concert.paye:
             part = next((p for p in concert.participations if p.musicien_id == musicien.id), None)
             if part is not None:
                 credit += float(part.credit_calcule_potentiel or 0.0)
 
-    # + opérations futures (inchangé)
+    # Opérations futures
     operations = Operation.query.filter_by(musicien_id=musicien.id).all()
     for op in operations:
         if op.date > aujourd_hui:
@@ -443,6 +452,12 @@ def calculer_gains_a_venir(musicien, concerts):
                 credit -= op.montant or 0
             elif typ == "credit":
                 credit += op.montant or 0
+
+    # Recette attendue pour CB ASSO7 / CAISSE ASSO7
+    if nom in ["CB ASSO7", "CAISSE ASSO7"]:
+        for concert in concerts:
+            if not concert.paye and concert.mode_paiement_prevu and nom in concert.mode_paiement_prevu.upper():
+                credit += concert.recette_attendue or 0
 
     return credit
 

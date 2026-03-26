@@ -50,8 +50,8 @@ def _compute_database_url() -> str:
     elif url.startswith("postgresql://") and "+psycopg" not in url:
         url = url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-    # Ajouter sslmode=require si Postgres et absent
-    if url.startswith("postgresql+psycopg://") and "sslmode=" not in url:
+    # Ajouter sslmode=require uniquement si DATABASE_URL est défini (DB distante)
+    if url.startswith("postgresql+psycopg://") and "sslmode=" not in url and os.getenv("DATABASE_URL"):
         url += ("&" if "?" in url else "?") + "sslmode=require"
 
     return url
@@ -69,7 +69,8 @@ if database_url.startswith("postgresql+psycopg://"):
         "pool_size": 5,
         "max_overflow": 5,
         "connect_args": {
-            "sslmode": "require",
+            # sslmode=require uniquement pour DB distante
+            **( {"sslmode": "require"} if os.getenv("DATABASE_URL") else {} ),
             # keepalives côté libpq (psycopg3)
             "keepalives": 1,
             "keepalives_idle": 30,
@@ -130,6 +131,7 @@ from mes_utils import (
     valider_concert_par_operation, concert_to_dict, get_debut_fin_saison,
     get_ordered_comptes_bis, get_reports_dict, extraire_infos_depuis_pdf, regrouper_cachets_par_mois,
     ensure_op_frais_previsionnels, detach_prevision_if_needed,
+    mois_nom_fr, formater_cachets_html,
 )
 
 COULEURS_MOIS = {
@@ -2036,21 +2038,6 @@ def cachets_a_venir():
     )
 
 
-MOIS_FR2 = {
-    1: "Janvier",
-    2: "Février",
-    3: "Mars",
-    4: "Avril",
-    5: "Mai",
-    6: "Juin",
-    7: "Juillet",
-    8: "Août",
-    9: "Septembre",
-    10: "Octobre",
-    11: "Novembre",
-    12: "Décembre"
-}
-
 @app.route('/preview_mail_cachets', methods=['POST'])
 def preview_mail_cachets():
     from datetime import date
@@ -2062,22 +2049,8 @@ def preview_mail_cachets():
     cachets_m1 = get_cachets_par_mois(mois_1, today.year)
     cachets_m2 = get_cachets_par_mois(mois_2, annee_m2)
 
-    def formater_cachets_html(cachets):
-        musiciens = {}
-        for c in sorted(cachets, key=lambda x: (x.musicien.nom, x.date)):
-            nom_complet = f"{c.musicien.prenom} {c.musicien.nom}"
-            musiciens.setdefault(nom_complet, []).append(
-                f"{c.date.strftime('%d/%m/%Y')} – {c.montant:.2f} €"
-            )
-        blocs = []
-        for nom, lignes in musiciens.items():
-            bloc = f"<p style='margin-left: 20px;'><strong>{nom}</strong><br>" + "<br>".join(lignes) + "</p>"
-            blocs.append(bloc)
-        return "\n".join(blocs)
-
-    import calendar
-    mois_1_nom = MOIS_FR2[mois_1]
-    mois_2_nom = MOIS_FR2[mois_2]
+    mois_1_nom = mois_nom_fr(mois_1, capitalize=True)
+    mois_2_nom = mois_nom_fr(mois_2, capitalize=True)
     titre = f"Déclaration des cachets MALO à venir : {mois_1_nom} et {mois_2_nom} {today.year}"
 
     message_html = f"""
@@ -2132,7 +2105,7 @@ def send_transactional_email(subject: str, html: str, to_list=None, cc_list=None
             raise RuntimeError("MAILGUN configuré mais MAILGUN_DOMAIN ou MAILGUN_API_KEY manquant.")
 
         resp = requests.post(
-            f"https://api.mailgun.net/v3/{domain}/messages",
+            f"https://api.eu.mailgun.net/v3/{domain}/messages",
             auth=("api", api_key),
             data={
                 "from": sender,
@@ -2158,17 +2131,17 @@ def send_transactional_email(subject: str, html: str, to_list=None, cc_list=None
         except Exception as e:
             raise RuntimeError("Librairie sendgrid non installée (pip install sendgrid).") from e
 
-        mail = Mail(
+        sg_mail = Mail(
             from_email=Email(sender),
             subject=subject,
             html_content=html,
         )
-        mail.to = [To(addr) for addr in to_list]
+        sg_mail.to = [To(addr) for addr in to_list]
         if cc_list:
-            mail.cc = [Cc(addr) for addr in cc_list]
+            sg_mail.cc = [Cc(addr) for addr in cc_list]
 
         sg = SendGridAPIClient(sg_key)
-        resp = sg.send(mail)
+        resp = sg.send(sg_mail)
         if resp.status_code >= 300:
             body = getattr(resp, "body", b"") or b""
             raise RuntimeError(f"SendGrid a répondu {resp.status_code}: {body[:300]}")

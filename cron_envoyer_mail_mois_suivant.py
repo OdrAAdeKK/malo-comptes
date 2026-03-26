@@ -1,60 +1,28 @@
 # cron_envoyer_mail_mois_suivant.py
 
-from datetime import date
-from flask import Flask
-from App import mail, db, app  # on réutilise ton app Flask
-from models import Cachet, Musicien
+from datetime import date, datetime
+from App import mail, db, app
 from flask_mail import Message
+from mes_utils import get_cachets_par_mois, formater_cachets_html, mois_nom_fr, log_mail_envoye
 
-MOIS_FR2 = {
-    1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril",
-    5: "Mai", 6: "Juin", 7: "Juillet", 8: "Août",
-    9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre"
-}
-
-
-def get_cachets_par_mois(mois, annee):
-    return (
-        db.session.query(Cachet)
-        .join(Musicien)  # jointure explicite
-        .filter(
-            db.extract("month", Cachet.date) == mois,
-            db.extract("year", Cachet.date) == annee
-        )
-        .order_by(Musicien.nom, Cachet.date)  # on trie avec la table jointe
-        .all()
-    )
-
-
-def formater_cachets_html(cachets):
-    musiciens = {}
-    for c in cachets:
-        nom_complet = f"{c.musicien.prenom} {c.musicien.nom}"
-        musiciens.setdefault(nom_complet, []).append(
-            f"{c.date.strftime('%d/%m/%Y')} – {c.montant:.2f} €"
-        )
-    blocs = []
-    for nom, lignes in musiciens.items():
-        bloc = f"<p style='margin-left: 20px;'><strong>{nom}</strong><br>" + "<br>".join(lignes) + "</p>"
-        blocs.append(bloc)
-    return "\n".join(blocs)
 
 def envoyer_mail_cachets_mois_suivant():
     today = date.today()
     mois_suivant = (today.month % 12) + 1
     annee_suivante = today.year if mois_suivant > today.month else today.year + 1
-    titre = f"Déclaration des cachets MALO à venir : {MOIS_FR2[mois_suivant]} {annee_suivante}"
+    mois_nom = mois_nom_fr(mois_suivant, capitalize=True)
+    titre = f"Déclaration des cachets MALO à venir : {mois_nom} {annee_suivante}"
 
     with app.app_context():
         cachets = get_cachets_par_mois(mois_suivant, annee_suivante)
         if not cachets:
             print("Aucun cachet à envoyer pour le mois suivant.")
-            log_envoi_mail(titre, "AUCUN_CACHET")
+            _log(titre, "AUCUN_CACHET")
             return
 
         message_html = f"""
         <p>Salut Lionel,</p>
-        <p>Voici la liste des cachets à déclarer pour MALO en {MOIS_FR2[mois_suivant]} :</p>
+        <p>Voici la liste des cachets à déclarer pour MALO en {mois_nom} :</p>
         {formater_cachets_html(cachets)}
         <p>Merci.<br>@+<br><br>Jérôme</p>
         """
@@ -69,16 +37,14 @@ def envoyer_mail_cachets_mois_suivant():
             )
             mail.send(msg)
             print("✅ Mail automatique envoyé à Lionel.")
-            log_envoi_mail(titre, "SUCCÈS")
+            log_mail_envoye(titre, message_html)
+            _log(titre, "SUCCÈS")
         except Exception as e:
-            print(f"❌ Erreur lors de l’envoi automatique : {e}")
-            log_envoi_mail(titre, f"ERREUR : {e}")
+            print(f"❌ Erreur lors de l'envoi automatique : {e}")
+            _log(titre, f"ERREUR : {e}")
 
 
-
-from datetime import datetime
-
-def log_envoi_mail(titre, statut):
+def _log(titre, statut):
     log_path = "log_envoi_mail_cachets.txt"
     horodatage = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(log_path, "a", encoding="utf-8") as f:

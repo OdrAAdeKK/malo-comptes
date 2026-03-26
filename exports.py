@@ -5,30 +5,14 @@ from datetime import datetime, date
 import os
 from models import Musicien, Operation, Concert, Participation, Report, db
 from sqlalchemy import func
-from mes_utils import calculer_credit_actuel
+from mes_utils import calculer_credit_actuel, calculer_gains_a_venir, mois_annee_fr
 from collections import defaultdict
-import locale
 
-# Liste manuelle des mois avec accents, pour compatibilité Windows
-MOIS_FR = [
-    "janvier", "février", "mars", "avril", "mai", "juin",
-    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
-]
 def mois_francais(dt):
     try:
-        mois = MOIS_FR[dt.month - 1]
-        return f"{mois} {dt.year}"
+        return mois_annee_fr(dt, capitalize=False)
     except Exception:
         return dt.strftime('%m/%Y')
-
-# Tentative de locale (pour Linux/Mac)
-try:
-    locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
-except:
-    try:
-        locale.setlocale(locale.LC_TIME, 'fr_FR')
-    except:
-        pass
 
 def generer_export_excel():
     aujourd_hui = date.today()
@@ -91,18 +75,7 @@ def generer_export_excel():
             credit = calculer_credit_actuel(m, concerts)
             report = db.session.query(func.sum(Report.montant)).filter_by(musicien_id=m.id).scalar() or 0
             credit += report
-            ops_avenir = db.session.query(Operation).filter(Operation.musicien_id == m.id, Operation.date > aujourd_hui).all()
-            total_ops_avenir = sum(op.montant if op.type == 'crédit' else -op.montant for op in ops_avenir)
-            part_pot = db.session.query(func.sum(Participation.credit_calcule_potentiel))\
-                .filter_by(musicien_id=m.id).scalar() or 0
-            gains_a_venir = part_pot + total_ops_avenir
-            if m.nom not in ["ASSO7"]:
-                concerts_cible = Concert.query.filter(
-                    Concert.paye.is_(False),
-                    Concert.mode_paiement_prevu.ilike(f"%{m.nom}%")
-                ).all()
-                for concert in concerts_cible:
-                    gains_a_venir += concert.recette_attendue or 0
+            gains_a_venir = calculer_gains_a_venir(m, concerts)
             valeurs[nom] = {
                 "credit": round(credit, 2),
                 "report": round(report, 2),
