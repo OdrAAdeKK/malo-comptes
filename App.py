@@ -2082,12 +2082,13 @@ def _default_sender():
 def send_transactional_email(subject: str, html: str, to_list=None, cc_list=None):
     """
     Envoi un email via API si configuré, sinon fallback SMTP (Flask-Mail).
-    Providers supportés : MAILGUN (API HTTP) ou SENDGRID (API HTTP).
+    Providers supportés : BREVO (API HTTP), MAILGUN (API HTTP), SENDGRID (API HTTP).
     Variables d'env attendues :
-      - MAIL_PROVIDER = mailgun | sendgrid | (vide -> fallback SMTP)
-      - MAIL_DEFAULT_SENDER (optionnel)
+      - MAIL_PROVIDER = brevo | mailgun | sendgrid | (vide -> fallback SMTP)
+      - MAIL_DEFAULT_SENDER
+      - BREVO_API_KEY           (si MAIL_PROVIDER=brevo)
       - MAILGUN_DOMAIN, MAILGUN_API_KEY (si MAIL_PROVIDER=mailgun)
-      - SENDGRID_API_KEY       (si MAIL_PROVIDER=sendgrid)
+      - SENDGRID_API_KEY        (si MAIL_PROVIDER=sendgrid)
     """
     to_list = to_list or []
     cc_list = cc_list or []
@@ -2096,6 +2097,39 @@ def send_transactional_email(subject: str, html: str, to_list=None, cc_list=None
 
     if not sender:
         raise RuntimeError("Aucun expéditeur configuré (MAIL_DEFAULT_SENDER ou MAIL_USERNAME).")
+
+    # --- Brevo API ---
+    if provider == "brevo":
+        api_key = os.environ.get("BREVO_API_KEY")
+        if not api_key:
+            raise RuntimeError("BREVO configuré mais BREVO_API_KEY manquant.")
+
+        # Décomposer "Nom <email>" ou "email"
+        import re as _re
+        m = _re.match(r'^"?([^"<]+?)"?\s*<([^>]+)>$', sender.strip())
+        if m:
+            sender_name, sender_email = m.group(1).strip(), m.group(2).strip()
+        else:
+            sender_name, sender_email = "", sender.strip()
+
+        payload = {
+            "sender": {"name": sender_name, "email": sender_email},
+            "to": [{"email": addr} for addr in to_list],
+            "subject": subject,
+            "htmlContent": html,
+        }
+        if cc_list:
+            payload["cc"] = [{"email": addr} for addr in cc_list]
+
+        resp = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": api_key, "Content-Type": "application/json"},
+            json=payload,
+            timeout=15,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"Brevo a répondu {resp.status_code}: {resp.text[:300]}")
+        return "brevo"
 
     # --- Mailgun API ---
     if provider == "mailgun":
