@@ -118,6 +118,10 @@ def main():
         upload_s3(artifact)
     except Exception as e:
         print(f"⚠️ Upload S3 échoué: {e}")
+        if S3_BUCKET:
+            # Un bucket est configuré mais la copie offsite a échoué : on FAIT échouer le job
+            # (sys.exit(1) via main) pour ne pas croire à tort que la sauvegarde est répliquée.
+            raise
 
     try:
         gc_retention()

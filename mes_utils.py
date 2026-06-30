@@ -475,10 +475,13 @@ def calculer_gains_a_venir(musicien, concerts):
             if part is not None:
                 credit += float(part.credit_calcule_potentiel or 0.0)
 
-    # Opérations futures
+    # Opérations "à venir" = futures OU prévisionnelles.
+    # (Aligné sur _sum_ops de get_etat_comptes : sinon la page web et l'export Excel
+    #  affichaient des "gains à venir" différents pour le même musicien. Les prévisionnels
+    #  sont exclus du crédit ACTUEL, donc aucun double comptage ici.)
     operations = Operation.query.filter_by(musicien_id=musicien.id).all()
     for op in operations:
-        if op.date > aujourd_hui:
+        if op.date > aujourd_hui or bool(getattr(op, "previsionnel", False)):
             typ = (op.type or "").lower()
             if typ == "debit":
                 credit -= op.montant or 0

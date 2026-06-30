@@ -6,7 +6,9 @@ services:
     plan: free
     autoDeploy: true
     buildCommand: "pip install --upgrade pip && pip install -r requirements-prod.txt"
-    startCommand: "gunicorn -w 2 -k gthread -t 120 -b 0.0.0.0:$PORT App:app"
+    # Plan free (~512 Mo RAM) : 1 worker multi-thread suffit pour 1 utilisateur et évite
+    # les OOM dus aux libs lourdes (pandas, PyMuPDF, openpyxl) chargées par 2 workers.
+    startCommand: "gunicorn -w 1 -k gthread --threads 8 -t 120 -b 0.0.0.0:$PORT App:app"
     envVars:
       - key: FLASK_ENV
         value: production
@@ -15,48 +17,3 @@ services:
       - key: DATABASE_URL
         sync: false  # géré côté Render (Postgres managé)
 
-  # Cron quotidien pour backups DB
-  - type: cron
-    name: malo-db-backup
-    env: python
-    region: frankfurt
-    plan: free
-    autoDeploy: true
-    buildCommand: "pip install --upgrade pip && pip install -r requirements-prod.txt"
-    startCommand: "python tools/backup_db.py"
-    # Tous les jours à 03:00 UTC (⇢ 04:00/05:00 heure FR selon saison)
-    schedule: "0 3 * * *"
-    envVars:
-      # Récupère le DATABASE_URL du service web
-      - key: DATABASE_URL
-        fromService:
-          type: web
-          name: malo-comptes
-          envVarKey: DATABASE_URL
-
-      # ---- Sauvegarde locale (sur disque persistant de ce service Cron) ----
-      - key: BACKUP_LOCAL_DIR
-        value: /opt/render/project/src/backups
-      - key: BACKUP_RETENTION_DAYS
-        value: "30"
-
-      # ---- Offsite S3 (laisser vides ici si tu préfères les gérer dans le dashboard) ----
-      - key: BACKUP_S3_BUCKET
-        sync: false
-      - key: BACKUP_S3_PREFIX
-        value: prod
-      - key: AWS_ACCESS_KEY_ID
-        sync: false
-      - key: AWS_SECRET_ACCESS_KEY
-        sync: false
-      - key: AWS_DEFAULT_REGION
-        value: eu-west-3
-      # Optionnel pour S3 compatibles (Wasabi/Scaleway/B2)
-      - key: AWS_ENDPOINT_URL
-        sync: false
-
-    # Disque persistant pour stocker les .sql.gz locaux
-    disk:
-      name: backups
-      mountPath: /opt/render/project/src/backups
-      sizeGB: 1
