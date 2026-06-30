@@ -254,13 +254,34 @@ def modifier_musicien(musicien_id):
 # Supprimer
 @app.route('/musicien/supprimer/<int:musicien_id>', methods=['POST'])
 def supprimer_musicien(musicien_id):
-    # Suppression participations
-    Participation.query.filter_by(musicien_id=musicien_id).delete()
-    # Suppression du musicien
     musicien = Musicien.query.get_or_404(musicien_id)
-    db.session.delete(musicien)
-    db.session.commit()
-    flash("Musicien supprimé avec succès", "success")
+
+    # Un musicien qui a des écritures comptables ne doit PAS être supprimé : les FK
+    # Operation/Cachet/Report n'ont pas de ON DELETE -> 500 en Postgres (prod), ou lignes
+    # orphelines en SQLite. On le DÉSACTIVE (actif=False) : masqué des listes, historique intact.
+    nb_ops = Operation.query.filter_by(musicien_id=musicien_id).count()
+    nb_cachets = Cachet.query.filter_by(musicien_id=musicien_id).count()
+    nb_reports = Report.query.filter_by(musicien_id=musicien_id).count()
+
+    if nb_ops or nb_cachets or nb_reports:
+        musicien.actif = False
+        db.session.add(musicien)
+        db.session.commit()
+        flash(f"« {(musicien.prenom or '').strip()} {musicien.nom} » a des écritures comptables "
+              f"({nb_ops} opération(s), {nb_cachets} cachet(s), {nb_reports} report(s)) : "
+              f"il a été DÉSACTIVÉ (masqué) plutôt que supprimé, pour préserver l'historique.", "info")
+        return redirect(url_for('liste_musiciens'))
+
+    # Sinon : suppression réelle (participations éventuelles d'abord), avec rollback de sécurité.
+    try:
+        Participation.query.filter_by(musicien_id=musicien_id).delete()
+        db.session.delete(musicien)
+        db.session.commit()
+        flash("Musicien supprimé avec succès", "success")
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Suppression musicien %s échouée", musicien_id)
+        flash("Impossible de supprimer ce musicien (il est référencé ailleurs). Il a été conservé.", "danger")
     return redirect(url_for('liste_musiciens'))
 
 
@@ -2028,7 +2049,7 @@ def supprimer_cachet(id):
     if cachet:
         db.session.delete(cachet)
         db.session.commit()
-    next_url = request.form.get('next')
+    next_url = _safe_next(request.form.get('next'))
     if next_url:
         return redirect(next_url)
     return redirect(url_for('cachets_a_venir'))

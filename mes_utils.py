@@ -1004,14 +1004,14 @@ def supprimer_recette_concert_pour_concert(concert_id: int) -> int:
         print(f"[INFO] Aucune 'Recette concert' détectée pour concert_id={concert_id}")
         return 0
 
-    # Supprime via le helper cascade qui gère les FKs auto-référentes
+    # Supprime via le helper cascade qui gère les FKs auto-référentes.
+    # On NE PIÈGE PLUS l'exception : si une suppression échoue, on propage pour que
+    # l'appelant fasse rollback et ne laisse pas un concert "non payé" avec une recette
+    # encore comptabilisée (trésorerie surévaluée silencieusement).
     suppr_count = 0
     for o in candidats:
-        try:
-            supprimer_operation_en_db(o.id)  # déjà transaction-safe
-            suppr_count += 1
-        except Exception as e:
-            print(f"[WARN] Suppression op 'Recette concert' id={o.id} échouée: {e}")
+        supprimer_operation_en_db(o.id)  # déjà transaction-safe
+        suppr_count += 1
 
     print(f"[OK] {suppr_count} opération(s) 'Recette concert' supprimée(s) pour concert_id={concert_id}")
     return suppr_count
