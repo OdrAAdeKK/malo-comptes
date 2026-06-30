@@ -5,7 +5,7 @@
 
 :root{
   --radius:14px; --radius-lg:20px; --radius-sm:11px; --pill:999px;
-  --maxw:1080px;
+  --maxw:1296px;
   --font-head:"Sora",system-ui,"Segoe UI",Roboto,sans-serif;
   --font-body:"Inter",system-ui,"Segoe UI",Roboto,Arial,sans-serif;
   --font-num:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
