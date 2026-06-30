@@ -36,3 +36,6 @@ log_*.txt
 *.env.*
 env
 env.txt
+
+# Sauvegardes locales DB (contiennent des secrets et des dumps)
+DB_Backup/
