@@ -75,8 +75,13 @@ def partage_benefices_concert(concert: Concert):
         else:
             resultats[mid] = part_unitaire
 
-    print(f"[✓] Concert id={concert.id} → part={part_unitaire}, jerome={pour_jerome}, total_benef={benefices}")
-    return resultats, part_unitaire, pour_jerome
+    # Bouclage EXACT : la part d'ASSO7 absorbe le reliquat d'arrondi (quelques centimes),
+    # de sorte que somme(musiciens) + part_asso7 == bénéfices (aucun centime perdu/créé).
+    total_musiciens = round(sum(resultats.values()), 2)
+    part_asso7 = round(benefices - total_musiciens, 2)
+
+    print(f"[✓] Concert id={concert.id} → part={part_unitaire}, asso7={part_asso7}, jerome={pour_jerome}, total_benef={benefices}")
+    return resultats, part_asso7, pour_jerome
 
 
 # calcul_participations.py

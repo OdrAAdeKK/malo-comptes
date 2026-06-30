@@ -20,7 +20,11 @@ class Musicien(db.Model):
 
     @property
     def gains_a_venir(self):
-        return sum([c.montant for c in self.cachets]) if hasattr(self, 'cachets') else 0
+        # NOTE: cette propriété re-sommait les cachets (déjà comptés dans credit_actuel),
+        # ce qui DOUBLAIT credit_potentiel. Les vrais « gains à venir » sont calculés par
+        # mes_utils.calculer_gains_a_venir / get_etat_comptes (participations potentielles
+        # + opérations futures). On renvoie 0.0 ici pour ne plus fausser credit_potentiel.
+        return 0.0
 
 
     @property

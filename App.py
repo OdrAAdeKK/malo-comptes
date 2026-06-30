@@ -281,7 +281,7 @@ def liste_concerts():
     # 🔁 Laisse la base comparer à CURRENT_DATE (évite décalages/locale)
     concerts = (
         Concert.query
-        .filter(Concert.date >= func.current_date())
+        .filter(Concert.date >= today_paris())
         .order_by(Concert.date.asc())
         .all()
     )
@@ -481,7 +481,7 @@ def modifier_concert(concert_id):
         # Redirection logique
         concert_date = concert.date
         concert_paye = concert.paye
-        today = date.today()
+        today = today_paris()
 
         if concert_date < today:
             if concert_paye:
@@ -550,7 +550,7 @@ def supprimer_concert(concert_id):
     mettre_a_jour_credit_calcule_potentiel()
 
     # Redirection logique en fonction des infos conservées
-    today = date.today()
+    today = today_paris()
     if concert_date < today:
         if concert_paye:
             saison = saison_from_date(concert_date).replace('/', '-')
@@ -573,7 +573,7 @@ def concerts_non_payes_view():
         Concert.query
         .filter(
             Concert.paye.is_(False),
-            Concert.date <= func.current_date()
+            Concert.date <= today_paris()
         )
         .order_by(Concert.date.asc())
         .all()
@@ -676,8 +676,11 @@ def toggle_concert_paye(concert_id):
                 db.session.delete(op)
                 removed += 1
 
-            # 4.c) remettre le champ à None (ou 0.0 si tu préfères)
-            concert.frais_previsionnels = None
+            # 4.c) On CONSERVE concert.frais_previsionnels (valeur dérivée) : les opérations
+            #      prévisionnelles sont bien supprimées ci-dessus (pas d'écriture "à venir"
+            #      fantôme tant que le concert est payé), mais on garde la valeur du champ pour
+            #      pouvoir recalculer correctement le POTENTIEL si le concert est dé-validé plus tard.
+            #      (Avant : concert.frais_previsionnels = None -> frais prévisionnels perdus.)
 
             db.session.add(concert)
             db.session.commit()
@@ -791,7 +794,10 @@ def valider_paiement_concert():
         for op in ops_prev:
             db.session.delete(op)
             removed += 1
-        concert.frais_previsionnels = 0.0
+        # On CONSERVE concert.frais_previsionnels (cf. toggle_concert_paye) : on supprime
+        # les opérations prévisionnelles mais on garde la valeur du champ pour que la
+        # dé-validation éventuelle recalcule le potentiel sans perdre les frais prévisionnels.
+        # (Avant : concert.frais_previsionnels = 0.0 -> frais prévisionnels perdus.)
 
         db.session.commit()
         if removed:
@@ -803,7 +809,9 @@ def valider_paiement_concert():
             mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
             db.session.commit()
         except Exception as e:
-            print(f"⚠️ Recalcul crédit réel échoué pour concert {concert.id} : {e}")
+            app.logger.exception("Recalcul crédit réel échoué pour concert %s : %s", concert.id, e)
+            flash("⚠️ Le recalcul des crédits a échoué : les soldes affichés peuvent être "
+                  "temporairement faux. Réessayez l'opération.", "danger")
 
         # 7) Redirection vers l’archive de la saison
         d = (concert.date or datetime.utcnow().date())
@@ -1364,7 +1372,7 @@ def liste_participations(concert_id):
 
         # Redirection logique identique à celle d’ajouter_concert
         concert_date = concert.date
-        today = date.today()
+        today = today_paris()
 
         if concert_date < today:
             if concert.paye:
@@ -1422,7 +1430,7 @@ def modifier_participation(participation_id):
         db.session.commit()
 
         concert_date = concert.date
-        today = date.today()
+        today = today_paris()
 
         if concert_date < today:
             if concert.paye:
@@ -1660,7 +1668,7 @@ def operations():
 
     concerts_js = preparer_concerts_js(concerts)
     concertsData = preparer_concerts_data()
-    today = date.today()
+    today = today_paris()
 
     # ===== Pré-remplissage (nouveau) =====
     prefill_date = None
@@ -1711,7 +1719,7 @@ def operations():
     current_date = prefill_date or today.strftime("%d/%m/%Y")
 
     saison_en_cours = get_saison_actuelle()
-    concerts_a_venir = Concert.query.filter(Concert.date >= date.today()).order_by(Concert.date).all()
+    concerts_a_venir = Concert.query.filter(Concert.date >= today_paris()).order_by(Concert.date).all()
     concerts_dicts_a_venir = [concert_to_dict(c) for c in concerts_a_venir]
     concerts_par_musicien = preparer_concerts_par_musicien()
     concerts_par_musicien["__Recette_concert__"] = concerts_dicts_a_venir
@@ -1839,7 +1847,7 @@ def modifier_operation(id):
     concerts_js = preparer_concerts_js(concerts)
     concerts_par_musicien = preparer_concerts_par_musicien()
 
-    today_str = date.today().isoformat()
+    today_str = today_paris().isoformat()
 
     # NEW ↓ Déterminer la bonne famille de motifs selon le bénéficiaire de l'opération
     benef_nom = ""
@@ -2028,7 +2036,7 @@ def supprimer_cachet(id):
 
 @app.route('/cachets_a_venir')
 def cachets_a_venir():
-    today = date.today()
+    today = today_paris()
     cachets = Cachet.query.filter(Cachet.date >= today).all()
     cachets_par_mois = regrouper_cachets_par_mois(cachets)
     return render_template(
@@ -2041,7 +2049,7 @@ def cachets_a_venir():
 @app.route('/preview_mail_cachets', methods=['POST'])
 def preview_mail_cachets():
     from datetime import date
-    today = date.today()
+    today = today_paris()
     mois_1 = today.month
     mois_2 = (today.month % 12) + 1
     annee_m2 = today.year if mois_2 > mois_1 else today.year + 1
@@ -2260,7 +2268,7 @@ def archives_concerts_saison(saison):
         Concert.query.filter(
             Concert.date >= debut_saison,
             Concert.date <= fin_saison,
-            Concert.date <= date.today(),
+            Concert.date <= today_paris(),
             Concert.paye.is_(True)
         )
         .order_by(Concert.date)
@@ -2310,7 +2318,7 @@ def archives_cachets():
     saisons = set()
 
     for (dt,) in toutes_les_dates:
-        if dt < date.today():  # uniquement passés
+        if dt < today_paris():  # uniquement passés
             annee = dt.year
             mois = dt.month
             if mois >= 9:
@@ -2413,7 +2421,7 @@ def archives_operations_saison(saison_url):
         .filter(
             Operation.date >= debut_saison,
             Operation.date <= fin_saison,
-            Operation.date <= date.today()
+            Operation.date <= today_paris()
         )
         .order_by(Operation.date.desc())
         .all()

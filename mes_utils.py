@@ -27,6 +27,38 @@ from sqlalchemy import and_, extract, func, or_
 from models import db, Cachet, Concert, Musicien
 from calcul_participations import partage_benefices_concert, mettre_a_jour_credit_calcule_potentiel
 
+# ─────────────────────────────────────────────
+# 1bis. ⏰ DATE "AUJOURD'HUI" — fuseau Europe/Paris (et non UTC du serveur Render)
+# ─────────────────────────────────────────────
+from zoneinfo import ZoneInfo
+PARIS_TZ = ZoneInfo("Europe/Paris")
+
+def today_paris():
+    """Date du jour en heure de Paris (évite le décalage UTC sur Render la nuit)."""
+    try:
+        return datetime.now(PARIS_TZ).date()
+    except Exception:
+        return date.today()
+
+
+def _alerter_recalc(concert_id, exc):
+    """
+    Journalise une erreur de recalcul de crédits et, si on est dans une requête web,
+    prévient l'utilisateur via flash (au lieu d'un print() perdu dans les logs).
+    """
+    try:
+        from flask import current_app, flash, has_request_context
+        try:
+            current_app.logger.exception("Recalcul des crédits échoué (concert %s): %s", concert_id, exc)
+        except Exception:
+            print(f"[WARN] recalcul échoué (concert {concert_id}): {exc}")
+        if has_request_context():
+            flash("⚠️ Le recalcul des crédits a échoué : les soldes affichés peuvent être "
+                  "temporairement faux. Réessayez l'opération.", "danger")
+    except Exception:
+        # ne jamais masquer l'erreur d'origine par une erreur de logging
+        print(f"[WARN] recalcul échoué (concert {concert_id}): {exc}")
+
 
 # ─────────────────────────────────────────────
 # 2. 🗃️ CHARGEMENT / SAUVEGARDE JSON & SQLITE
@@ -202,7 +234,7 @@ from models import Musicien, Operation, Participation, Concert, Report, db
 
 def get_etat_comptes():
     """Construit le tableau pour /comptes (musiciens + structures)."""
-    aujourd_hui = date.today()
+    aujourd_hui = today_paris()
     tableau = []
 
     concerts = Concert.query.all()
@@ -393,7 +425,7 @@ def calculer_credit_actuel(musicien, concerts):
     if musicien is None:
         return 0.0
 
-    aujourd_hui = date.today()
+    aujourd_hui = today_paris()
     nom = (musicien.nom or "").strip().upper()
 
     # Helper: somme des opérations passées (non prévisionnelles)
@@ -432,7 +464,7 @@ def calculer_credit_actuel(musicien, concerts):
 
 
 def calculer_gains_a_venir(musicien, concerts):
-    aujourd_hui = date.today()
+    aujourd_hui = today_paris()
     credit = 0.0
     nom = (musicien.nom or "").strip().upper()
 
@@ -695,12 +727,36 @@ def get_credits_concerts_from_db(concerts):
 
 
 def enregistrer_participations(concert_id, participants_ids, jerome_id=None):
-    Participation.query.filter_by(concert_id=concert_id).delete()
+    """
+    Met à jour la liste des participants d'un concert SANS détruire les données
+    déjà saisies/calculées (gain_fixe, credit_calcule, credit_calcule_potentiel)
+    pour les participants conservés.
+      - on ne supprime QUE les participations devenues absentes ;
+      - on n'ajoute QUE les nouvelles ;
+      - on ne mute PAS le set reçu en argument ;
+      - rollback en cas d'erreur.
+    """
+    ids = set(participants_ids or [])
     if jerome_id:
-        participants_ids.add(jerome_id)
-    for musicien_id in participants_ids:
-        db.session.add(Participation(concert_id=concert_id, musicien_id=musicien_id))
-    db.session.commit()
+        ids.add(jerome_id)
+
+    try:
+        existantes = {
+            p.musicien_id: p
+            for p in Participation.query.filter_by(concert_id=concert_id).all()
+        }
+        # 1) Retirer les participations qui ne sont plus dans la liste
+        for mid, part in existantes.items():
+            if mid not in ids:
+                db.session.delete(part)
+        # 2) Ajouter uniquement les nouveaux (les conservés gardent gain_fixe & crédits)
+        for mid in ids:
+            if mid not in existantes:
+                db.session.add(Participation(concert_id=concert_id, musicien_id=mid))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
 # def get_operations_concert(concert_id):
 # def partage_benefices_concert(concert_id):
 
@@ -769,7 +825,7 @@ def recalculer_frais_concert(concert_id: int, op_to_remove_id: int | None = None
 
 def concerts_non_payes(concerts):
     """Retourne les concerts passés et non payés."""
-    today = datetime.today().date()
+    today = today_paris()
     return [c for c in concerts if c.date < today and not c.paye]
 
 def concert_to_dict(concert):
@@ -803,8 +859,14 @@ def creer_recette_concert_si_absente(concert_id, montant=None, date_op=None, mod
                    else (concert.recette_attendue or 0.0))
     )
     if montant_final <= 0:
-        print(f"[WARN] Recette concert id={concert_id} avec montant <= 0 : rien créé.")
-        return None
+        # Avant : on retournait None silencieusement, alors que l'appelant avait déjà
+        # marqué le concert payé et effacé recette_attendue -> état incohérent et muet
+        # (recette de prévision perdue, aucune opération comptable créée).
+        # On lève désormais : chaque appelant a un try/except qui fait rollback et signale.
+        raise ValueError(
+            f"Recette du concert id={concert_id} <= 0 : validation annulée. "
+            f"Renseignez une recette positive avant de valider le paiement."
+        )
 
     # -- Date --
     from datetime import date as _date
@@ -1004,7 +1066,7 @@ def basculer_statut_paiement_concert(concert_id: int, paye: bool, montant: float
             mettre_a_jour_credit_calcule_reel_pour_concert(concert.id)
             db.session.commit()
         except Exception as e:
-            print(f"[WARN] recalcul réel échoué pour concert {concert.id}: {e}")
+            _alerter_recalc(concert.id, e)
 
         return {
             "concert_id": concert.id,
@@ -1039,7 +1101,7 @@ def basculer_statut_paiement_concert(concert_id: int, paye: bool, montant: float
                 mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
                 db.session.commit()
             except Exception as e:
-                print(f"[WARN] recalcul potentiel échoué pour concert {concert.id}: {e}")
+                _alerter_recalc(concert.id, e)
 
             return {
                 "concert_id": concert.id,
@@ -1562,15 +1624,17 @@ def annuler_operation(id):
     for op_liee in liees_inverse:
         db.session.delete(op_liee)
 
-    # Si frais, déduire du concert
-    if (operation.motif or "").strip().lower() in {"frais", "frais de concerts"} and concert_id:
-        concert = Concert.query.get(concert_id)
-        if concert and concert.frais:
-            concert.frais = max(0.0, concert.frais - (operation.montant or 0.0))
-            db.session.add(concert)
+    # Mémorise si c'était un frais de concert AVANT suppression
+    etait_frais = (operation.motif or "").strip().lower() in {"frais", "frais de concerts"}
 
     db.session.delete(operation)
     db.session.commit()
+
+    # Si c'était un frais, on RECALCULE concert.frais par somme SQL (hors prévisionnels),
+    # comme partout ailleurs, au lieu d'une soustraction manuelle qui pouvait diverger
+    # (frais signés, prévisionnels, etc.) et fausser le partage des bénéfices.
+    if etait_frais and concert_id:
+        recalculer_frais_concert(concert_id)
 
     # Si c'était une recette de concert, on remet le concert en "non payé"
     if etait_recette and concert_id:
@@ -1579,14 +1643,16 @@ def annuler_operation(id):
             concert.paye = False
             db.session.add(concert)
             db.session.commit()
-            # Recalcul des crédits potentiels
+            # Recalcul des crédits potentiels POUR CE concert.
+            # (Avant : appel à mettre_a_jour_credit_calcule_potentiel(concert) qui ne prend
+            #  AUCUN argument -> TypeError avalée, le recalcul ne se faisait jamais.)
             try:
-                from calcul_participations import mettre_a_jour_credit_calcule_potentiel
+                from calcul_participations import mettre_a_jour_credit_calcule_potentiel_pour_concert
                 print(f"[INFO] Recalcul des participations potentielles pour concert {concert.id}")
-                mettre_a_jour_credit_calcule_potentiel(concert)
+                mettre_a_jour_credit_calcule_potentiel_pour_concert(concert.id)
                 db.session.commit()
             except Exception as e:
-                print(f"⚠️ Erreur recalcul concert {concert.id} après suppression recette :", e)
+                _alerter_recalc(concert.id, e)
 
     return True
 
@@ -1982,7 +2048,7 @@ def get_saison_actuelle():
     """
     Renvoie la saison actuelle au format '2023/2024' en fonction de la date d'aujourd'hui.
     """
-    aujourd_hui = date.today()
+    aujourd_hui = today_paris()
     return saison_from_date(aujourd_hui)
 
 def get_debut_fin_saison(saison):
