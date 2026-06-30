@@ -35,18 +35,11 @@
 		text: center !important;
 	}
 </style>
-</style>
 
 <div class="container">
   <h1>Cachets à venir</h1>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, message in messages %}
-      <div class="alert alert-{{ category }} mt-3 mb-3">{{ message }}</div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
+{# messages flash désormais affichés globalement par base.html (_flash.html) #}
 
   {% if cachets_par_mois %}
     {% for mois, cachets_par_musicien in cachets_par_mois %}

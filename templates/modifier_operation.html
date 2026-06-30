@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta charset="UTF-8">
     <title>Modifier une opération</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
@@ -151,6 +152,8 @@
     </style>
 </head>
 <body>
+{% include "_nav.html" %}
+{% include "_flash.html" %}
 <div class="operations-form-container">
     <form method="POST" action="{{ url_for('modifier_operation', id=operation.id) }}">
     <div class="form-row-flex">

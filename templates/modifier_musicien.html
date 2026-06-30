@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="utf-8">
   <title>Modifier un musicien</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
@@ -8,9 +9,9 @@
     body {
       font-family: Arial, sans-serif;
       background: #f5f5f5;
-      padding: 50px;
+      padding: 0 0 40px;
       display: flex;
-      justify-content: center;
+      flex-direction: column; align-items: center;
     }
     .form-container {
       background: white;
@@ -79,6 +80,8 @@
   </style>
 </head>
 <body>
+{% include "_nav.html" %}
+{% include "_flash.html" %}
   <div class="form-container">
     <h1>Modifier un musicien</h1>
     <form method="POST">

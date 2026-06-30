@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <title>Archives des cachets</title>
@@ -13,9 +14,9 @@
         body {
             font-family: Arial, sans-serif;
             background-color: #f5f5f5;
-            padding: 50px;
+            padding: 0 0 40px;
             display: flex;
-            justify-content: center;
+            flex-direction: column; align-items: center;
         }
         .container {
             background: white;
@@ -64,6 +65,8 @@
     </style>
 </head>
 <body>
+{% include "_nav.html" %}
+{% include "_flash.html" %}
   <div class="container">
     <h1>Archives des cachets</h1>
     <ul class="saisons-list">

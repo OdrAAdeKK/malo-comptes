@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta charset="UTF-8">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <title>Reports</title>
@@ -34,6 +35,8 @@
     </style>
 </head>
 <body>
+{% include "_nav.html" %}
+{% include "_flash.html" %}
 <div class="container">
     <h1>Reports</h1>
     {% if message %}

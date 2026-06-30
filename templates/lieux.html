@@ -80,18 +80,7 @@
 <div class="lieux-page">
   <h1>Lieux de concerts</h1>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="flashes" style="margin:10px 0 14px;">
-        {% for category, message in messages %}
-          <div class="flash {{ category }}" style="padding:10px 12px; border-radius:6px;
-               background:#e6f4ff; border:1px solid #b3daff; color:#084b83; margin-bottom:8px;">
-            {{ message }}
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
+  {# messages flash désormais affichés globalement par base.html (_flash.html) #}
 
   <!-- Boutons de navigation (une seule ligne) -->
   <div class="lieux-toolbar">

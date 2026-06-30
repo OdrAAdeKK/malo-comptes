@@ -39,3 +39,6 @@ env.txt
 
 # Sauvegardes locales DB (contiennent des secrets et des dumps)
 DB_Backup/
+
+# Captures/artefacts de test
+.playwright-mcp/

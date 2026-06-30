@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta charset="UTF-8">
     <title>Nouvelle opération</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
@@ -252,6 +253,8 @@
     </style>
 </head>
 <body>
+{% include "_nav.html" %}
+{% include "_flash.html" %}
 <div class="operations-form-container">
   <div class="operations-form-title">Nouvelle opération</div>
 

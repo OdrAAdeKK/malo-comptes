@@ -1,5 +1,9 @@
 <!DOCTYPE html>
 {% set is_modification = operation is defined %}
+
+<html lang="fr">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         .operations-form-container {
             background: #fff;
@@ -241,8 +245,7 @@
 		}
 
     </style>
-<html lang="fr">
-<head>
+
     <meta charset="UTF-8">
     <title>{% if is_modification %}Modifier une opération{% else %}Nouvelle opération{% endif %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
@@ -255,6 +258,8 @@
     </style>
 </head>
 <body>
+{% include "_nav.html" %}
+{% include "_flash.html" %}
 <div class="operations-form-container">
     <div class="operations-form-title">
         {% if is_modification %}Modifier une opération{% else %}Nouvelle opération{% endif %}
@@ -473,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-</body>
+
 
 
 
