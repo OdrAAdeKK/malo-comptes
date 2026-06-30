@@ -1,18 +1,83 @@
-{% extends 'base.html' %}
-{% block title %}Accueil{% endblock %}
+{% extends 'base_neon.html' %}
+{% block title %}Tableau de bord — Malo{% endblock %}
 {% block content %}
-<div class="container">
-    <h1>Bienvenue Jérôme&nbsp;!</h1>
-    <div class="menu">
-        <a href="{{ url_for('liste_concerts') }}" class="btn btn-blue"><span>🎵</span>Concerts</a>
-        <a href="{{ url_for('comptes') }}" class="btn btn-green"><span>📊</span>Comptes</a>
-        <a href="{{ url_for('operations') }}" class="btn btn-teal"><span>💰</span>Opérations</a>
-        <a href="{{ url_for('declarer_cachet') }}" class="btn btn-bordeaux"><span>🎫</span>Cachets</a>
-        <a href="{{ url_for('page_archives') }}" class="btn btn-violet"><span>📁</span>Archives</a>
-		<a href="{{ url_for('export_general') }}" class="bouton-export">📥 Export Excel Général</a>
 
+<h1 class="page-title">Bonjour Jérôme</h1>
+<p class="page-sub">L'état des comptes de l'asso7 en un coup d'œil.</p>
 
-
-    </div>
+<div class="tiles" style="margin-bottom:16px">
+  <div class="tile glow">
+    <div class="k"><i class="fas fa-building-columns"></i> Trésorerie réelle</div>
+    <div class="v num">{{ treso_credit|format_currency }}</div>
+    <div class="d">CB {{ cb_credit|format_currency }} · Caisse {{ caisse_credit|format_currency }}</div>
+  </div>
+  <div class="tile">
+    <div class="k"><i class="fas fa-users"></i> Dû aux musiciens</div>
+    <div class="v num">{{ du_total|format_currency }}</div>
+    <div class="d">{{ nb_crediteurs }} musicien{{ 's' if nb_crediteurs > 1 else '' }} créditeur{{ 's' if nb_crediteurs > 1 else '' }}</div>
+  </div>
+  <div class="tile glow-violet">
+    <div class="k"><i class="fas fa-handshake-angle"></i> Part de l'asso</div>
+    <div class="v num">{{ asso7_credit|format_currency }}</div>
+    <div class="d">ASSO7</div>
+  </div>
 </div>
+
+<div class="dash-2">
+
+  <div class="card">
+    <div class="card-title"><span class="dot"></span> Ce qu'on doit à chaque musicien
+      <a class="card-link" href="{{ url_for('comptes') }}">tout voir</a></div>
+    {% for m in musiciens %}
+      <div class="owe-row">
+        <span class="owe-name">{{ m.nom }}</span>
+        <span class="owe-right">
+          {% if m.credit > 0.005 %}
+            <span class="owe-amt pos">{{ m.credit|format_currency }}</span>
+            <a class="btn btn-sm" href="{{ url_for('operations') }}">payer</a>
+          {% elif m.credit < -0.005 %}
+            <span class="owe-amt neg">{{ m.credit|format_currency }}</span>
+            <span class="dim" style="font-size:12px">il doit</span>
+          {% else %}
+            <span class="owe-amt muted">{{ m.credit|format_currency }}</span>
+          {% endif %}
+        </span>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span> À traiter</div>
+      <div class="feed-row">
+        <span><i class="fas fa-music" style="color:var(--warn)"></i>&nbsp; {{ nb_a_repartir }} concert{{ 's' if nb_a_repartir > 1 else '' }} à répartir</span>
+        <a class="badge todo" href="{{ url_for('liste_concerts') }}">voir</a>
+      </div>
+      <div class="feed-row">
+        <span><i class="fas fa-ticket" style="color:var(--accent)"></i>&nbsp; Déclarer les cachets à Lionel</span>
+        <a class="badge" href="{{ url_for('declarer_cachet') }}">cachets</a>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span> Activité récente</div>
+      {% for c in recents %}
+        <div class="feed-row">
+          <span>{{ c.label }} <span class="dim" style="font-size:12px">· {{ c.date_fr }}</span></span>
+          {% if c.paye %}<span class="badge ok">réparti</span>{% else %}<span class="badge todo">à répartir</span>{% endif %}
+        </div>
+      {% else %}
+        <div class="feed-row muted">Aucun concert pour l'instant.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<div class="actions-row">
+  <a class="btn" href="{{ url_for('ajouter_concert') }}"><i class="fas fa-plus"></i> Nouveau concert</a>
+  <a class="btn btn-ghost" href="{{ url_for('operations') }}"><i class="fas fa-coins"></i> Nouvelle opération</a>
+  <a class="btn btn-ghost" href="{{ url_for('declarer_cachet') }}"><i class="fas fa-ticket"></i> Déclarer un cachet</a>
+  <a class="btn btn-ghost" href="{{ url_for('export_general') }}"><i class="fas fa-file-excel"></i> Export Excel</a>
+</div>
+
 {% endblock %}

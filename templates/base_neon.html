@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Malo{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700;800&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='neon.css') }}">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  {% set nav = active|default('') %}
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('accueil') }}">
+      <span class="logo">M</span> Malo<span class="muted" style="font-weight:600;font-size:14px"> · asso7</span>
+    </a>
+    <nav class="topnav">
+      <a href="{{ url_for('accueil') }}" class="{{ 'on' if nav=='accueil' }}"><i class="fas fa-gauge"></i> Tableau de bord</a>
+      <a href="{{ url_for('liste_concerts') }}" class="{{ 'on' if nav=='concerts' }}"><i class="fas fa-music"></i> Concerts</a>
+      <a href="{{ url_for('comptes') }}" class="{{ 'on' if nav=='comptes' }}"><i class="fas fa-chart-bar"></i> Comptes</a>
+      <a href="{{ url_for('operations') }}" class="{{ 'on' if nav=='operations' }}"><i class="fas fa-coins"></i> Opérations</a>
+      <a href="{{ url_for('declarer_cachet') }}" class="{{ 'on' if nav=='cachets' }}"><i class="fas fa-ticket"></i> Cachets</a>
+      <a href="{{ url_for('liste_lieux') }}" class="{{ 'on' if nav=='lieux' }}"><i class="fas fa-location-dot"></i> Lieux</a>
+      <a href="{{ url_for('page_archives') }}" class="{{ 'on' if nav=='archives' }}"><i class="fas fa-folder"></i> Archives</a>
+    </nav>
+    <span class="topbar-sp"></span>
+    <span class="topbar-pill"><i class="fas fa-calendar"></i> {{ saison_actuelle|default('') }}</span>
+  </header>
+
+  <div class="flash-zone">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category or 'message' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+  </div>
+
+  <main class="wrap {% block wrap_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+
+  <nav class="tabbar">
+    <a href="{{ url_for('accueil') }}" class="{{ 'on' if nav=='accueil' }}"><i class="fas fa-gauge"></i>Accueil</a>
+    <a href="{{ url_for('liste_concerts') }}" class="{{ 'on' if nav=='concerts' }}"><i class="fas fa-music"></i>Concerts</a>
+    <a href="{{ url_for('comptes') }}" class="{{ 'on' if nav=='comptes' }}"><i class="fas fa-chart-bar"></i>Comptes</a>
+    <a href="{{ url_for('operations') }}" class="{{ 'on' if nav=='operations' }}"><i class="fas fa-coins"></i>Opés</a>
+    <a href="{{ url_for('declarer_cachet') }}" class="{{ 'on' if nav=='cachets' }}"><i class="fas fa-ticket"></i>Cachets</a>
+    <a href="{{ url_for('page_archives') }}" class="{{ 'on' if nav=='archives' }}"><i class="fas fa-folder"></i>Archives</a>
+  </nav>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -152,17 +152,52 @@ COULEURS_MOIS = {
 
 # ------------ ROUTES DE BASE ------------
 
+@app.context_processor
+def _inject_globals():
+    from mes_utils import get_saison_actuelle
+    try:
+        return {"saison_actuelle": get_saison_actuelle()}
+    except Exception:
+        return {"saison_actuelle": ""}
+
+
 @app.route('/')
-def index():
-    # Option 1 : Afficher directement l'accueil
-    return render_template('accueil.html')
-
-    # Option 2 : Rediriger vers /accueil (décommenter la ligne ci-dessous si tu préfères)
-    # return redirect(url_for('accueil'))
-
 @app.route('/accueil')
 def accueil():
-    return render_template('accueil.html')
+    """Tableau de bord : état de la trésorerie + ce qu'on doit aux musiciens."""
+    from mes_utils import get_etat_comptes
+    tableau = get_etat_comptes()
+
+    musiciens = [r for r in tableau if not r.get('separateur') and not r.get('structure')]
+    structures = {r.get('nom'): r for r in tableau if r.get('structure')}
+
+    def _cred(nom):
+        return float((structures.get(nom) or {}).get('credit', 0.0) or 0.0)
+
+    treso_credit = _cred('TRESO ASSO7')
+    cb_credit = _cred('CB ASSO7')
+    caisse_credit = _cred('CAISSE ASSO7')
+    asso7_credit = _cred('ASSO7')
+
+    du_total = sum((m.get('credit') or 0.0) for m in musiciens if (m.get('credit') or 0.0) > 0.005)
+    nb_crediteurs = sum(1 for m in musiciens if (m.get('credit') or 0.0) > 0.005)
+    musiciens = sorted(musiciens, key=lambda m: (m.get('credit') or 0.0), reverse=True)
+
+    nb_a_repartir = Concert.query.filter(Concert.paye.is_(False)).count()
+
+    rec = Concert.query.order_by(Concert.date.desc()).limit(6).all()
+    recents = [{
+        'label': (c.lieu_obj.nom if c.lieu_obj else (c.lieu or '—')),
+        'date_fr': (c.date.strftime('%d/%m/%Y') if c.date else ''),
+        'paye': c.paye,
+    } for c in rec]
+
+    return render_template(
+        'accueil.html', active='accueil',
+        treso_credit=treso_credit, cb_credit=cb_credit, caisse_credit=caisse_credit, asso7_credit=asso7_credit,
+        du_total=du_total, nb_crediteurs=nb_crediteurs, musiciens=musiciens,
+        nb_a_repartir=nb_a_repartir, recents=recents,
+    )
 
 
 
