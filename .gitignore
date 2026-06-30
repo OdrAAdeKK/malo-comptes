@@ -42,3 +42,7 @@ DB_Backup/
 
 # Captures/artefacts de test
 .playwright-mcp/
+
+# Helpers de test local
+TESTER_MALO_local.bat
+instance/malo_test_local.db
