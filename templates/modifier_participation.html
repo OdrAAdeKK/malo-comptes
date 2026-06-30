@@ -1,14 +1,35 @@
-<!doctype html>
-<title>Modifier une participation</title>
-<h1>Modifier la participation</h1>
-<form method="post">
-    Musicien :
-    <select name="musicien_id" required>
-        {% for m in musiciens %}
-        <option value="{{ m.id }}" {% if m.id == participation.musicien_id %}selected{% endif %}>{{ m.prenom }} {{ m.nom }}</option>
-        {% endfor %}
-    </select><br>
-    Payé : <input type="checkbox" name="paye" {% if participation.paye %}checked{% endif %}><br>
-    <button type="submit">Enregistrer</button>
-</form>
-<p><a href="{{ url_for('liste_participations', concert_id=participation.concert_id) }}">Retour à la liste</a></p>
+{% extends 'base_neon.html' %}
+{% block title %}Modifier une participation{% endblock %}
+{% block content %}
+
+<h1 class="page-title">Modifier la participation</h1>
+<p class="page-sub">Musicien et statut de paiement</p>
+
+<div class="card">
+  <div class="card-title"><span class="dot"></span> Participation</div>
+
+  <form method="post">
+    <div class="form-grid">
+      <div>
+        <label>Musicien</label>
+        <select name="musicien_id" required>
+          {% for m in musiciens %}
+          <option value="{{ m.id }}" {% if m.id == participation.musicien_id %}selected{% endif %}>{{ m.prenom }} {{ m.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Payé</label>
+        <label class="check"><input type="checkbox" name="paye" {% if participation.paye %}checked{% endif %}> Le musicien a été payé</label>
+      </div>
+    </div>
+
+    <div class="row-actions" style="margin-top:16px">
+      <button type="submit" class="btn"><i class="fas fa-save"></i> Enregistrer</button>
+      <a class="btn btn-ghost" href="{{ url_for('liste_participations', concert_id=participation.concert_id) }}"><i class="fas fa-arrow-left"></i> Retour à la liste</a>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

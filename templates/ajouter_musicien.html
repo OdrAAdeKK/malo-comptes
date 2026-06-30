@@ -1,69 +1,56 @@
-{% extends 'base.html' %}
+{% extends 'base_neon.html' %}
 
 {% block title %}Ajouter un musicien{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width: 420px; margin: 0 auto; margin-top: 40px;">
-  <h1 style="text-align:center;">Ajouter un musicien</h1>
+<h1 class="page-title">Ajouter un musicien</h1>
+<p class="page-sub">Créer une personne ou une structure</p>
 
-  {% if erreur %}
-    <div style="color:#b71c1c; background:#fbe7e7; border-radius:5px; padding:10px 15px; margin-bottom:20px; text-align:center;">
-      {{ erreur }}
-    </div>
-  {% endif %}
+{% if erreur %}
+  <div class="card" style="border-color:var(--neg);">
+    <div class="card-title"><span class="dot" style="background:var(--neg);"></span> Erreur</div>
+    <p class="neg">{{ erreur }}</p>
+  </div>
+{% endif %}
 
+<div class="card" style="max-width:520px;">
   <form method="POST" autocomplete="off">
-    <!-- Prénom -->
-    <label for="prenom" style="font-weight: bold; margin-bottom: 7px; display: block;">Prénom</label>
-    <input
-      type="text"
-      id="prenom"
-      name="prenom"
-      value="{{ request.form.prenom or '' }}"
-      required
-      style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;"
-    >
 
-    <!-- Nom -->
-    <label for="nom" style="font-weight: bold; margin-bottom: 7px; display: block;">Nom</label>
-    <input
-      type="text"
-      id="nom"
-      name="nom"
-      value="{{ request.form.nom or '' }}"
-      required
-      style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;"
-    >
-
-    <!-- Type (nouveau) -->
-    <label for="type" style="font-weight: bold; margin-bottom: 7px; display: block;">Type</label>
-    <select
-      id="type"
-      name="type"
-      required
-      style="width:100%; padding:9px; margin-bottom:17px; border:1px solid #d3d3d3; border-radius:6px; font-size: 1em;"
-    >
-      {% set type_val = (request.form.get('type') or 'personne')|lower %}
+    <label for="type">Type</label>
+    {% set type_val = (request.form.get('type') or 'personne')|lower %}
+    <select id="type" name="type" required>
       <option value="personne" {% if type_val == 'personne' %}selected{% endif %}>Personne</option>
       <option value="structure" {% if type_val == 'structure' %}selected{% endif %}>Structure</option>
     </select>
 
-    <!-- Actif -->
-    <label style="font-weight: normal; display:block; margin-bottom: 20px;">
-      <input type="checkbox" name="actif" {% if request.form.get('actif', True) %}checked{% endif %}>
+    <div class="form-grid">
+      <div>
+        <label for="prenom">Prénom</label>
+        <input type="text" id="prenom" name="prenom" value="{{ request.form.prenom or '' }}" required>
+      </div>
+      <div>
+        <label for="nom">Nom</label>
+        <input type="text" id="nom" name="nom" value="{{ request.form.nom or '' }}" required>
+      </div>
+    </div>
+
+    <label style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+      <input type="checkbox" name="actif" {% if request.form.get('actif', True) %}checked{% endif %} style="width:auto;">
       Actif
     </label>
 
-    <div class="button-row">
-      <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-	  <button type="submit" class="valider-button">Valider</button>
-      <a href="#"
-         onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }"
-         class="retour-button">⬅ Retour</a>
+    <div class="row-actions" style="margin-top:20px; gap:10px;">
+      <button type="submit" class="btn"><i class="fas fa-check"></i> Valider</button>
+      <a href="{{ url_for('accueil') }}" class="btn btn-ghost"><i class="fas fa-home"></i> Accueil</a>
+      <a href="#" class="btn btn-ghost"
+         onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }">
+        <i class="fas fa-arrow-left"></i> Retour</a>
     </div>
   </form>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <!-- Script: si 'Structure' alors le prénom est désactivé et non requis -->
 <script>
 (function () {

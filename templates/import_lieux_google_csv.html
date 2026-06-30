@@ -1,16 +1,18 @@
-{% extends 'base.html' %}
+{% extends 'base_neon.html' %}
 {% block title %}Importer des lieux (Google CSV){% endblock %}
 {% block content %}
-<div class="container" style="max-width:700px; margin-top:24px;">
-  <h1>Importer des lieux depuis Google Contacts (CSV)</h1>
-  <p class="muted-italic">Dans Google Contacts : Plus d’actions → Exporter → Format “Google CSV”.</p>
+<h1 class="page-title">Importer des lieux</h1>
+<p class="page-sub">Depuis Google Contacts : Plus d'actions → Exporter → format « Google CSV ».</p>
+
+<div class="card" style="max-width:700px">
   <form method="POST" action="{{ url_for('import_lieux_google_csv') }}" enctype="multipart/form-data"
-        style="display:flex; gap:10px; align-items:center; margin:14px 0;">
-    <input type="file" name="csv" accept=".csv" required>
-    <button type="submit" class="valider-button">Importer</button>
+        style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+    <input type="file" name="csv" accept=".csv" required style="flex:1; min-width:220px;">
+    <button type="submit" class="btn"><i class="fas fa-file-import"></i> Importer</button>
   </form>
-  <div class="button-row" style="margin-top:12px;">
-    <a href="{{ url_for('liste_lieux') }}" class="back-button">← Retour</a>
-  </div>
+</div>
+
+<div class="actions-row">
+  <a class="btn btn-ghost" href="{{ url_for('liste_lieux') }}"><i class="fas fa-arrow-left"></i> Retour aux lieux</a>
 </div>
 {% endblock %}

@@ -1,162 +1,87 @@
-{% extends 'base.html' %}
+{% extends 'base_neon.html' %}
 
 {% block title %}Opérations à venir{% endblock %}
 
 {% block content %}
-<style>
-    .icon-button {
-        border: none;
-        background: none;
-        cursor: pointer;
-        font-size: 1.1rem;
-        padding: 6px;
-    }
-    .icon-button.orange { color: #E67E22; }
-    .icon-button.red { color: #C0392B; }
+<h1 class="page-title">Opérations à venir</h1>
+<p class="page-sub">Mouvements financiers planifiés, regroupés par mois</p>
 
-    /* ✓ élargir la page comme les concerts */
-    .container.ops-a-venir {
-        max-width: 1200px;
-        width: 100%;
-    }
-
-    .archived-table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        margin-top: 20px; 
-        font-size: 1rem; 
-        table-layout: auto;
-    }
-    .archived-table thead th {
-        background-color: #26bfa6 !important;
-        color: white;
-        font-weight: bold;
-    }
-    .archived-table th, .archived-table td {
-        padding: 10px 14px;
-        border: 1px solid #e0e0e0;
-        text-align: left;
-    }
-    .archived-table tbody tr:nth-child(even) { background-color: #f9f9f9; }
-    .archived-table tbody tr:hover { background-color: #e6f8f5; }
-
-    /* ✓ opérations auto + prévisionnels */
-    tr.operation-auto { background-color: #f3f3f3; color: #666; font-style: italic; }
-    tr.operation-auto td { border-top: 1px solid #ddd; }
-    .mois-bandeau { margin-top: 30px; padding: 8px; background: #f0f0f0; font-weight: bold; border-radius: 4px; font-size: 1.2rem; }
-    tr.is-previsionnel { background: #fafafa; }
-    .muted-italic { color: #6b7280; font-style: italic; }
-    .prev-tag { color: #6b7280; font-style: italic; margin-left: 6px; font-size: .9em; }
-
-	/* largeur précise des colonnes (index du tableau) */
-	.container.ops-a-venir .archived-table th:nth-child(6),
-	.container.ops-a-venir .archived-table td:nth-child(6) {
-	  width: 12.5ch;            /* Montant ~12 caractères */
-	  min-width: 12.5ch;
-	  max-width: 12.5ch;
-	  white-space: nowrap;
-	  text-align: right;
-	  font-variant-numeric: tabular-nums;
-	}
-
-	/* Rééquilibrage : plus d’espace pour Qui / Motif / Précision, un peu moins pour Concert */
-	.container.ops-a-venir .archived-table th:nth-child(2),
-	.container.ops-a-venir .archived-table td:nth-child(2) {
-	  width: 18%;               /* Qui */
-	}
-
-	.container.ops-a-venir .archived-table th:nth-child(4),
-	.container.ops-a-venir .archived-table td:nth-child(4) {
-	  width: 14%;               /* Motif */
-	}
-
-	.container.ops-a-venir .archived-table th:nth-child(5),
-	.container.ops-a-venir .archived-table td:nth-child(5) {
-	  width: 22%;               /* Précision */
-	  word-break: break-word;   /* au cas où */
-	}
-
-	.container.ops-a-venir .archived-table th:nth-child(7),
-	.container.ops-a-venir .archived-table td:nth-child(7) {
-	  width: 28%;               /* Concert (réduit depuis 40%) */
-	}
-
-</style>
-
-<div class="container ops-a-venir">
-    <h1>Opérations à venir</h1>
-
-    {% if groupes %}
-        {% for key, bloc in groupes.items() %}
-    <h2>{{ bloc.label }}</h2>
-    <table class="archived-table">
-		<thead>
-		  <tr>
-			<th id="sort-date-{{ loop.index }}" style="cursor:pointer;">Date ⬍</th>
-			<th id="sort-qui-{{ loop.index }}" style="cursor:pointer;">Qui ⬍</th>
-			<th>Type</th>
-			<th>Motif</th>
-			<th>Précision</th>
-			<th id="sort-montant-{{ loop.index }}" style="cursor:pointer; text-align:right;">Montant ⬍</th>
-			<th id="sort-concert-{{ loop.index }}" style="cursor:pointer;">Concert ⬍</th>
-			<th style="text-align: center;">Actions</th>
-		  </tr>
-		</thead>
-
-        <tbody>
-            {% for op in bloc["items"] %}
-            <tr class="{% if op.motif|lower == 'commission lionel' %}operation-auto {% endif %}{% if op.previsionnel %}is-previsionnel{% endif %}">
-                <td>
-                  {{ op.date.strftime('%d/%m/%Y') }}
-                  {% if op.previsionnel %}<em class="prev-tag">(prévisionnel)</em>{% endif %}
-                </td>
-                <td>{{ op.musicien.prenom }} {{ op.musicien.nom }}</td>
-                <td>{{ op.type }}</td>
-                <td>{{ op.motif }}</td>
-                <td>{{ op.precision or '' }}</td>
-                <td class="col-amount">
-                  <span class="{% if op.previsionnel %}muted-italic{% endif %}">
-                    {{ "{:,.2f}".format(op.montant).replace(',', ' ').replace('.', ',') }} €
-                  </span>
-                </td>
-                <td>
-                    {% if op.concert %}
-                        {{ op.concert.date.strftime('%d/%m/%Y') }} — {{ op.concert.lieu }}
-                    {% else %}—{% endif %}
-                </td>
-                <td style="text-align: center;">
-                    {% if op.motif|lower != 'commission lionel' %}
-                        <form method="GET" action="{{ url_for('modifier_operation', id=op.id) }}" style="display:inline;">
-                            <button type="submit" class="icon-button orange" title="Modifier">
-                                <i class="fas fa-pen"></i>
-                            </button>
-                        </form>
-                        <form method="POST" action="{{ url_for('supprimer_operation') }}" style="display:inline;" data-id="{{ op.id }}">
-                            <button type="submit" class="delete-operation-button" title="Supprimer cette opération">🗑</button>
-                        </form>
-                    {% else %}
-                        <span title="Opération automatique non modifiable">🔒</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-{% endfor %}
-
-    {% else %}
-        <p>Aucune opération à venir.</p>
-    {% endif %}
-
-    <div class="button-row">
-        <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-        <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-        <a href="{{ url_for('archives_operations') }}" class="archives-button">Archives</a>
-        <a href="{{ url_for('comptes') }}" class="valider-button">Comptes</a>
-        <a href="{{ url_for('operations') }}" class="operations-button">Nouvelle opération</a>
+{% if groupes %}
+    {% for key, bloc in groupes.items() %}
+    <div class="card">
+        <div class="card-title"><span class="dot"></span> {{ bloc.label }}</div>
+        <div class="table-scroll">
+            <table class="archived-table table" data-month-key="{{ key }}">
+                <thead>
+                    <tr>
+                        <th id="sort-date-{{ loop.index }}" style="cursor:pointer;">Date <i class="fas fa-sort"></i></th>
+                        <th id="sort-qui-{{ loop.index }}" style="cursor:pointer;">Qui <i class="fas fa-sort"></i></th>
+                        <th>Type</th>
+                        <th>Motif</th>
+                        <th>Précision</th>
+                        <th id="sort-montant-{{ loop.index }}" style="cursor:pointer; text-align:right;">Montant <i class="fas fa-sort"></i></th>
+                        <th id="sort-concert-{{ loop.index }}" style="cursor:pointer;">Concert <i class="fas fa-sort"></i></th>
+                        <th style="text-align:center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for op in bloc["items"] %}
+                    <tr class="{% if op.motif|lower == 'commission lionel' %}operation-auto {% endif %}{% if op.previsionnel %}is-previsionnel{% endif %}">
+                        <td>
+                            {{ op.date.strftime('%d/%m/%Y') }}
+                            {% if op.previsionnel %}<em class="prev-tag">(prévisionnel)</em>{% endif %}
+                        </td>
+                        <td>{{ op.musicien.prenom }} {{ op.musicien.nom }}</td>
+                        <td>{{ op.type }}</td>
+                        <td>{{ op.motif }}</td>
+                        <td>{{ op.precision or '' }}</td>
+                        <td class="amount col-amount {% if op.montant is not none and op.montant >= 0 %}pos{% else %}neg{% endif %}">
+                            <span class="{% if op.previsionnel %}muted-italic{% endif %}">
+                                {{ "{:,.2f}".format(op.montant).replace(',', ' ').replace('.', ',') }} €
+                            </span>
+                        </td>
+                        <td>
+                            {% if op.concert %}
+                                {{ op.concert.date.strftime('%d/%m/%Y') }} — {{ op.concert.lieu }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td style="text-align:center;">
+                            {% if op.motif|lower != 'commission lionel' %}
+                                <div class="row-actions" style="justify-content:center;">
+                                    <form method="GET" action="{{ url_for('modifier_operation', id=op.id) }}" style="display:inline;">
+                                        <button type="submit" title="Modifier"><i class="fas fa-pen"></i></button>
+                                    </form>
+                                    <form method="POST" action="{{ url_for('supprimer_operation') }}" style="display:inline;" data-id="{{ op.id }}">
+                                        <button type="submit" class="delete-operation-button" title="Supprimer cette opération"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                </div>
+                            {% else %}
+                                <span title="Opération automatique non modifiable"><i class="fas fa-lock"></i></span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-</div>
+    {% endfor %}
+{% else %}
+    <div class="card">
+        <p class="muted">Aucune opération à venir.</p>
+    </div>
+{% endif %}
 
+<div class="card-actions" style="margin-top:18px; display:flex; gap:10px; flex-wrap:wrap;">
+    <a href="{{ url_for('accueil') }}" class="btn btn-ghost"><i class="fas fa-gauge"></i> Accueil</a>
+    <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="btn btn-ghost"><i class="fas fa-arrow-left"></i> Retour</a>
+    <a href="{{ url_for('archives_operations') }}" class="btn btn-ghost"><i class="fas fa-folder"></i> Archives</a>
+    <a href="{{ url_for('comptes') }}" class="btn btn-ghost"><i class="fas fa-chart-bar"></i> Comptes</a>
+    <a href="{{ url_for('operations') }}" class="btn"><i class="fas fa-plus"></i> Nouvelle opération</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
 <script src="{{ url_for('static', filename='js/supprimer_operation.js') }}"></script>
 
 <script>
@@ -216,5 +141,4 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 </script>
-
 {% endblock %}

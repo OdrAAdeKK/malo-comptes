@@ -334,21 +334,38 @@ from models import Operation                         # ← NEW
 
 @app.route('/concerts')
 def liste_concerts():
-    # 🔁 Laisse la base comparer à CURRENT_DATE (évite décalages/locale)
-    concerts = (
-        Concert.query
-        .filter(Concert.date >= today_paris())
-        .order_by(Concert.date.asc())
-        .all()
-    )
+    # Journal unifié : filtres tout / à venir / non payés / réparti.
+    filtre = (request.args.get('filtre') or 'tout').strip()
+    today = today_paris()
+    base_q = Concert.query
+
+    if filtre == 'a_venir':
+        q = base_q.filter(Concert.date >= today)
+    elif filtre == 'non_payes':
+        q = base_q.filter(Concert.paye.is_(False))
+    elif filtre == 'reparti':
+        q = base_q.filter(Concert.paye.is_(True))
+    else:
+        filtre = 'tout'
+        q = base_q
+
+    concerts = q.order_by(Concert.date.desc()).all()
+
+    # Compteurs pour les puces de filtre
+    counts = {
+        'tout': base_q.count(),
+        'a_venir': base_q.filter(Concert.date >= today).count(),
+        'non_payes': base_q.filter(Concert.paye.is_(False)).count(),
+        'reparti': base_q.filter(Concert.paye.is_(True)).count(),
+    }
 
     musiciens = Musicien.query.all()
     musiciens_dict = {m.id: m for m in musiciens}
 
     credits_musiciens, credits_asso7, credits_jerome = get_credits_concerts_from_db(concerts)
 
-    # Regroupement par mois pour le template
-    groupes = grouper_par_mois(concerts, "date", descending=False)
+    # Regroupement par mois pour le template (plus récent en premier)
+    groupes = grouper_par_mois(concerts, "date", descending=True)
 
     # --- NEW: frais par musicien et par concert (hors prévisionnels globaux CB/CAISSE) ---
     concert_ids = [c.id for c in concerts]
@@ -381,12 +398,15 @@ def liste_concerts():
 
     return render_template(
         'concerts.html',
-        concerts=concerts,          # encore envoyé si ton template l’utilise
-        groupes=groupes,            # ← à utiliser pour l’affichage par mois
+        active='concerts',
+        filtre=filtre,
+        counts=counts,
+        concerts=concerts,
+        groupes=groupes,            # ← affichage par mois
         credits_musiciens=credits_musiciens,
         credits_asso7=credits_asso7,
         musiciens_dict=musiciens_dict,
-        frais_par_musicien=frais_par_musicien   # ← NEW
+        frais_par_musicien=frais_par_musicien
     )
 
 
@@ -622,6 +642,11 @@ from mes_utils import grouper_par_mois, get_credits_concerts_from_db
 
 @app.route('/concerts_non_payes')
 def concerts_non_payes_view():
+    # Redirigé vers le journal unifié des concerts (filtre « non payés »).
+    return redirect(url_for('liste_concerts', filtre='non_payes'))
+
+
+def _concerts_non_payes_view_legacy():
     from collections import defaultdict  # local pour éviter les effets de bord
 
     # passés et non payés
@@ -1913,7 +1938,7 @@ def modifier_operation(id):
     motif_options = motifs_pour_beneficiaire(benef_nom)
 
     return render_template(
-        'form_operations.html',
+        'operations.html',
         titre_formulaire="Modifier une opération",
         operation=operation,
         musiciens=musiciens_dicts,

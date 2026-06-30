@@ -1,69 +1,31 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
-    <title>Archives des opérations</title>
-    <style>
-        .saisons-list {
-            list-style-type: none;
-            padding-left: 0;
-            margin: 0 0 28px 0;
-        }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            padding: 0 0 40px;
-            display: flex;
-            flex-direction: column; align-items: center;
-        }
-        .container {
-            background: white;
-            padding: 36px;
-            border-radius: 12px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            max-width: 600px;
-            width: 100%;
-            text-align: center;
-        }
-        h1 { margin-bottom: 30px; }
-        .btn-saison {
-            display: block;
-            padding: 16px 24px;
-            margin: 10px 0;
-            color: white;
-            font-size: 1.25rem;
-            text-decoration: none;
-            border-radius: 6px;
-            font-weight: 600;
-            background-color: #26bfa6;
-            transition: background 0.18s;
-        }
-        .btn-saison:hover {
-            background-color: #1ba491;
-        }
+{% extends 'base_neon.html' %}
+{% block title %}Archives des opérations{% endblock %}
+{% block content %}
 
-    </style>
-</head>
-<body>
-{% include "_nav.html" %}
-{% include "_flash.html" %}
-    <div class="container">
-        <h1>Choisis une saison</h1>
-        <ul class="saisons-list">
+<h1 class="page-title">Archives des opérations</h1>
+<p class="page-sub">Choisis une saison pour consulter ses opérations passées.</p>
+
+<div class="card">
+    <div class="card-title"><span class="dot"></span> Saisons</div>
+
+    {% if saisons %}
+        <div class="tiles">
             {% for s in saisons %}
-                <li>
-                    <a href="{{ url_for('archives_operations_saison', saison_url=s.replace('/', '-')) }}" class="btn-saison">{{ s }}</a>
-                </li>
+                <a class="btn" href="{{ url_for('archives_operations_saison', saison_url=s.replace('/', '-')) }}">
+                    <i class="fas fa-folder-open"></i> {{ s }}
+                </a>
             {% endfor %}
-        </ul>
-<div class="button-row">
-    <a href="{{ url_for('accueil') }}" class="back-button">Accueil</a>
-    <a href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }" class="retour-button">⬅ Retour</a>
-    <a href="{{ url_for('page_archives') }}" class="archives-button">Archives</a>
-	<a href="{{ url_for('operations_a_venir') }}" class="a-venir-button">À venir</a>  <!-- ⬅ Nouveau bouton -->
-</div>
+        </div>
+    {% else %}
+        <p class="page-sub">Aucune saison disponible.</p>
+    {% endif %}
+
+    <div class="row-actions" style="margin-top:18px">
+        <a class="btn btn-ghost" href="{{ url_for('accueil') }}"><i class="fas fa-home"></i> Accueil</a>
+        <a class="btn btn-ghost" href="#" onclick="if (document.referrer) { window.history.back(); } else { window.location.href='{{ url_for('accueil') }}'; }"><i class="fas fa-arrow-left"></i> Retour</a>
+        <a class="btn btn-ghost" href="{{ url_for('page_archives') }}"><i class="fas fa-box-archive"></i> Archives</a>
+        <a class="btn btn-ghost" href="{{ url_for('operations_a_venir') }}"><i class="fas fa-calendar-day"></i> À venir</a>
     </div>
-</body>
-</html>
+</div>
+
+{% endblock %}
